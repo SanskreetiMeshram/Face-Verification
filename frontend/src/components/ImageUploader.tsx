@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, Image as ImageIcon, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { UploadCloud, Image as ImageIcon, Sparkles, AlertCircle, RefreshCw, Camera } from 'lucide-react';
 
 interface ImageUploaderProps {
   onImageSelected: (file: File, previewUrl: string) => void;
@@ -10,25 +10,111 @@ interface ImageUploaderProps {
   onReset: () => void;
 }
 
+// Generate offline fallback canvas face image so sample images ALWAYS work even without internet
+function generateSyntheticFaceDataUrl(variant: number): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = 400;
+  canvas.height = 400;
+  const ctx = canvas.getContext('2d')!;
+
+  // Background gradient
+  const bgGrad = ctx.createLinearGradient(0, 0, 400, 400);
+  if (variant === 1) {
+    bgGrad.addColorStop(0, '#1E293B');
+    bgGrad.addColorStop(1, '#0F172A');
+  } else if (variant === 2) {
+    bgGrad.addColorStop(0, '#1E1B4B');
+    bgGrad.addColorStop(1, '#0F172A');
+  } else if (variant === 3) {
+    bgGrad.addColorStop(0, '#134E4A');
+    bgGrad.addColorStop(1, '#0F172A');
+  } else {
+    // Landscape no face
+    bgGrad.addColorStop(0, '#0284C7');
+    bgGrad.addColorStop(1, '#059669');
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, 400, 400);
+    // Mountains
+    ctx.fillStyle = '#064E3B';
+    ctx.beginPath();
+    ctx.moveTo(0, 400);
+    ctx.lineTo(150, 200);
+    ctx.lineTo(300, 400);
+    ctx.fill();
+    return canvas.toDataURL('image/jpeg', 0.9);
+  }
+
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, 400, 400);
+
+  // Face Oval
+  ctx.fillStyle = variant === 1 ? '#FBCFE8' : variant === 2 ? '#FDE68A' : '#E2E8F0';
+  ctx.beginPath();
+  ctx.ellipse(200, 200, 90, 115, 0, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Eyes
+  ctx.fillStyle = '#1E293B';
+  ctx.beginPath();
+  ctx.arc(165, 175, 12, 0, 2 * Math.PI);
+  ctx.arc(235, 175, 12, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Eyeballs pupil highlight
+  ctx.fillStyle = '#FFFFFF';
+  ctx.beginPath();
+  ctx.arc(168, 172, 4, 0, 2 * Math.PI);
+  ctx.arc(238, 172, 4, 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Nose
+  ctx.strokeStyle = '#94A3B8';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(200, 185);
+  ctx.lineTo(195, 215);
+  ctx.lineTo(205, 215);
+  ctx.stroke();
+
+  // Smile / Mouth
+  ctx.strokeStyle = '#E11D48';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(200, 240, 30, 0.2 * Math.PI, 0.8 * Math.PI);
+  ctx.stroke();
+
+  // Hair
+  ctx.fillStyle = variant === 1 ? '#4C0519' : variant === 2 ? '#78350F' : '#0F172A';
+  ctx.beginPath();
+  ctx.arc(200, 130, 95, Math.PI, 2 * Math.PI);
+  ctx.fill();
+
+  return canvas.toDataURL('image/jpeg', 0.9);
+}
+
 const SAMPLE_IMAGES = [
   {
     name: "Portrait 1 (Female)",
     url: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80",
+    variant: 1,
     description: "High-contrast studio portrait"
   },
   {
     name: "Portrait 2 (Male)",
     url: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=600&q=80",
+    variant: 2,
     description: "Natural lighting speaker photo"
   },
   {
     name: "Portrait 3 (Profile)",
     url: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=600&q=80",
+    variant: 3,
     description: "Social media headshot"
   },
   {
     name: "Landscape (No Face)",
     url: "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80",
+    variant: 4,
     description: "Test edge-case: No face"
   }
 ];
@@ -82,15 +168,38 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
     setIsDragging(false);
   };
 
+  const dataUrlToFile = async (dataUrl: string, filename: string): Promise<File> => {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return new File([blob], filename, { type: 'image/jpeg' });
+  };
+
   const loadSample = async (sample: typeof SAMPLE_IMAGES[0]) => {
     try {
       setLoadingSample(sample.name);
       setErrorMessage(null);
-      const res = await fetch(sample.url);
-      const blob = await res.blob();
-      const file = new File([blob], `${sample.name.toLowerCase().replace(/\s+/g, '_')}.jpg`, { type: 'image/jpeg' });
-      const objectUrl = URL.createObjectURL(blob);
-      onImageSelected(file, objectUrl);
+      
+      // Try loading external high-res photo, or seamlessly fall back to embedded synthetic face
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch(sample.url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (res.ok) {
+          const blob = await res.blob();
+          const file = new File([blob], `${sample.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.jpg`, { type: 'image/jpeg' });
+          const objectUrl = URL.createObjectURL(blob);
+          onImageSelected(file, objectUrl);
+          return;
+        }
+      } catch (networkErr) {
+        // Fallback to local instant generator
+      }
+
+      // Generate local fallback
+      const fallbackDataUrl = generateSyntheticFaceDataUrl(sample.variant);
+      const file = await dataUrlToFile(fallbackDataUrl, `${sample.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.jpg`);
+      onImageSelected(file, fallbackDataUrl);
     } catch (err) {
       setErrorMessage('Could not load sample image. Please upload a local file.');
     } finally {
@@ -99,7 +208,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   };
 
   return (
-    <div className="glass-panel p-6 sm:p-8 rounded-2xl relative overflow-hidden border border-slate-800/80 shadow-2xl">
+    <div className="glass-panel p-5 sm:p-8 rounded-2xl relative overflow-hidden border border-slate-800/80 shadow-2xl">
       {/* Background glow decoration */}
       <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
 
@@ -140,7 +249,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all duration-300 ${
+          className={`border-2 border-dashed rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all duration-300 ${
             isDragging
               ? 'border-cyan-400 bg-cyan-500/10 scale-[1.01]'
               : 'border-slate-700/80 hover:border-cyan-500/50 bg-slate-900/40 hover:bg-slate-900/70'
@@ -226,6 +335,9 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
               <img
                 src={sample.url}
                 alt={sample.name}
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
                 className="w-8 h-8 rounded-lg object-cover border border-slate-700 group-hover:border-cyan-400 transition"
               />
               <div className="min-w-0 flex-1">

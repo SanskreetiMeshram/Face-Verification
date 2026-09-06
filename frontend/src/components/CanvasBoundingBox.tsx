@@ -22,7 +22,9 @@ export const CanvasBoundingBox: React.FC<CanvasBoundingBoxProps> = ({
     if (!ctx) return;
 
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (imageSrc.startsWith('http://') || imageSrc.startsWith('https://')) {
+      img.crossOrigin = 'anonymous';
+    }
     img.src = imageSrc;
 
     img.onload = () => {
