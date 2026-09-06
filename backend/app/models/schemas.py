@@ -17,6 +17,8 @@ class BoundingBox(BaseModel):
 class FaceDetail(BaseModel):
     index: int
     confidence: float
+    quality_score: Optional[float] = None
+    embedding_dimension: int = 128
     bounding_box: BoundingBox
     landmarks: Optional[Dict[str, List[int]]] = None
     embedding_fingerprint: str = Field(..., description="Cryptographic SHA-256 fingerprint of the embedding vector")
@@ -27,15 +29,16 @@ class FaceDetectionResult(BaseModel):
     faces: List[FaceDetail] = []
     primary_confidence: float = 0.0
     embedding_generated: bool
+    embedding_dimension: int = 128
     source_image_sha256: str
     image_width: int
     image_height: int
     annotated_image_url: Optional[str] = None
-    detector_model: str = "OpenCV Deep Neural Network / YuNet"
+    detector_model: str = "OpenCV Neural & Multi-Cascade Engine"
     message: str
 
 # -----------------------------------------------------------------------------
-# Reverse Image Search & Social Match Schemas
+# Reverse Image Search & Discovered Content Schemas
 # -----------------------------------------------------------------------------
 class SearchResultItem(BaseModel):
     title: str = ""
@@ -43,16 +46,19 @@ class SearchResultItem(BaseModel):
     domain: str
     thumbnail: Optional[str] = None
     source: str = "Reverse Image Search"
-    platform: Optional[str] = Field(None, description="Classified social platform e.g. Instagram, X, TikTok, YouTube, LinkedIn, Reddit, Facebook")
+    platform: Optional[str] = Field(None, description="Classified public web / social platform")
     is_social_media: bool = False
     similarity: Optional[str] = None
+    confidence_score: Optional[float] = None
     published_at: Optional[str] = None
+    discovered_at: Optional[str] = None
     raw_metadata: Optional[Dict[str, Any]] = None
 
 class ReverseSearchResponse(BaseModel):
     success: bool
     provider: str
     results_count: int
+    match_status: str = Field(default="FOUND", description="'FOUND', 'POSSIBLE_MATCH', 'NOT_FOUND', 'ERROR'")
     social_match_found: bool
     primary_match: Optional[SearchResultItem] = None
     all_results: List[SearchResultItem] = []
@@ -61,8 +67,15 @@ class ReverseSearchResponse(BaseModel):
     error_message: Optional[str] = None
 
 # -----------------------------------------------------------------------------
-# Canonical Evidence & Hashing Schemas
+# Canonical Evidence & Content Fingerprint Schemas
 # -----------------------------------------------------------------------------
+class DiscoveredContentMetadata(BaseModel):
+    title: str
+    url: str
+    domain: str
+    platform: str
+    discoveredAt: str
+
 class CanonicalEvidence(BaseModel):
     source_image_sha256: str
     reverse_search_provider: str
@@ -76,6 +89,22 @@ class EvidenceHashResult(BaseModel):
     canonical_json: str
     sha256_hash: str
     bytes32_hash: str = Field(..., description="0x-prefixed 32-byte hex for EVM")
+    content_fingerprint: str = Field(default="", description="Content fingerprint representation")
+
+class FingerprintCreateRequest(BaseModel):
+    title: str
+    url: str
+    domain: str
+    platform: str
+    discovered_at: Optional[str] = None
+    source_image_sha256: Optional[str] = None
+    search_provider: Optional[str] = None
+
+class FingerprintCreateResponse(BaseModel):
+    canonical_json: str
+    sha256_hash: str
+    bytes32_hash: str
+    evidence: CanonicalEvidence
 
 # -----------------------------------------------------------------------------
 # Blockchain Schemas

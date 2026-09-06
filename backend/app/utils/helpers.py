@@ -94,23 +94,39 @@ def safe_delete_file(filepath: Optional[str]) -> bool:
 
 def validate_image_bytes(image_bytes: bytes, filename: str) -> Tuple[bool, Optional[str]]:
     """Validate uploaded image size and header magic bytes."""
+    if not image_bytes or len(image_bytes) == 0:
+        return False, "Empty image file provided."
+
     max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
     if len(image_bytes) > max_bytes:
         return False, f"File size exceeds maximum allowed {settings.MAX_UPLOAD_SIZE_MB}MB"
         
     ext = os.path.splitext(filename)[1].lower().lstrip(".")
-    if ext not in settings.allowed_extensions_set:
-        return False, f"Unsupported file extension '.{ext}'. Allowed: {', '.join(settings.allowed_extensions_set)}"
+    # If extension is present, check against common supported formats
+    valid_exts = settings.allowed_extensions_set.union({
+        "jpg", "jpeg", "png", "webp", "bmp", "gif", "tiff", "jfif", "heic", "heif", "svg", "blob", ""
+    })
+    
+    if ext and ext not in valid_exts:
+        # Check if bytes are still decodable image bytes
+        if not (image_bytes.startswith(b'\xff\xd8\xff') or 
+                image_bytes.startswith(b'\x89PNG\r\n\x1a\n') or 
+                (image_bytes.startswith(b'RIFF') and b'WEBP' in image_bytes[:16])):
+            return False, f"Unsupported file extension '.{ext}'. Allowed: {', '.join(settings.allowed_extensions_set)}"
         
-    # Magic bytes check for JPEG, PNG, WebP
+    # Magic bytes check for JPEG, PNG, WebP, BMP, GIF
     if image_bytes.startswith(b'\xff\xd8\xff'):
         return True, None
     elif image_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
         return True, None
     elif image_bytes.startswith(b'RIFF') and b'WEBP' in image_bytes[:16]:
         return True, None
-    elif len(image_bytes) > 0:
-        # Fallback permissive check if bytes can be decoded by PIL/OpenCV
+    elif image_bytes.startswith(b'BM'):
+        return True, None
+    elif image_bytes.startswith(b'GIF87a') or image_bytes.startswith(b'GIF89a'):
+        return True, None
+    elif len(image_bytes) > 16:
+        # Permissive check for any binary image data
         return True, None
         
     return False, "Invalid or empty image file format"

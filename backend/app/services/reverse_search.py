@@ -2,6 +2,7 @@ import os
 import abc
 import json
 import logging
+from datetime import datetime, timezone
 import httpx
 from typing import List, Optional, Dict, Any
 from app.config import settings
@@ -42,7 +43,7 @@ class SerpApiProvider(ReverseImageSearchProvider):
 
     async def search(self, image_bytes: bytes, filename: str, image_url: Optional[str] = None) -> List[SearchResultItem]:
         if not self.api_key:
-            raise ValueError("SerpApi API key is not configured in REVERSE_IMAGE_API_KEY")
+            raise ValueError("Reverse-image search provider is not configured.")
 
         results: List[SearchResultItem] = []
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -54,20 +55,19 @@ class SerpApiProvider(ReverseImageSearchProvider):
                 }
                 response = await client.get("https://serpapi.com/search.json", params=params)
             else:
-                # SerpApi Google Lens accepts image file uploads via POST or direct multipart
                 files = {"file": (filename, image_bytes, "image/jpeg")}
                 data = {
                     "engine": self.engine,
                     "api_key": self.api_key
                 }
-                # Direct upload to SerpApi endpoint or query
                 response = await client.post("https://serpapi.com/search.json", data=data, files=files)
 
             if response.status_code != 200:
                 logger.error(f"SerpApi error ({response.status_code}): {response.text}")
-                raise RuntimeError(f"SerpApi request failed with status {response.status_code}: {response.text}")
+                raise RuntimeError(f"SerpApi search request failed with status {response.status_code}: {response.text}")
 
             data = response.json()
+            now_iso = datetime.now(timezone.utc).isoformat()
             
             # Parse Google Lens visual matches
             visual_matches = data.get("visual_matches", [])
@@ -78,7 +78,7 @@ class SerpApiProvider(ReverseImageSearchProvider):
                 platform, domain = classify_social_platform(url)
                 title = item.get("title") or item.get("source") or ""
                 thumbnail = item.get("thumbnail") or item.get("thumbnail_url")
-                source_name = item.get("source") or "Google Lens / SerpApi"
+                source_name = item.get("source") or "Google Lens (SerpApi)"
                 
                 results.append(SearchResultItem(
                     title=title,
@@ -88,6 +88,8 @@ class SerpApiProvider(ReverseImageSearchProvider):
                     source=source_name,
                     platform=platform,
                     is_social_media=bool(platform),
+                    similarity="Potential Match (Google Lens)",
+                    discovered_at=now_iso,
                     raw_metadata={"position": item.get("position"), "price": item.get("price")}
                 ))
                 
@@ -100,7 +102,7 @@ class SerpApiProvider(ReverseImageSearchProvider):
                 platform, domain = classify_social_platform(url)
                 title = item.get("title") or item.get("snippet") or ""
                 thumbnail = item.get("thumbnail")
-                source_name = item.get("source") or "Google Images / SerpApi"
+                source_name = item.get("source") or "Google Images (SerpApi)"
                 
                 results.append(SearchResultItem(
                     title=title,
@@ -110,7 +112,9 @@ class SerpApiProvider(ReverseImageSearchProvider):
                     source=source_name,
                     platform=platform,
                     is_social_media=bool(platform),
-                    published_at=item.get("published_date")
+                    similarity="Potential Match (Google Images)",
+                    published_at=item.get("published_date"),
+                    discovered_at=now_iso
                 ))
 
         return results
@@ -129,10 +133,11 @@ class BingVisualSearchProvider(ReverseImageSearchProvider):
 
     async def search(self, image_bytes: bytes, filename: str, image_url: Optional[str] = None) -> List[SearchResultItem]:
         if not self.api_key:
-            raise ValueError("Bing Visual Search API key is not configured")
+            raise ValueError("Reverse-image search provider is not configured.")
 
         headers = {"Ocp-Apim-Subscription-Key": self.api_key}
         results: List[SearchResultItem] = []
+        now_iso = datetime.now(timezone.utc).isoformat()
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             files = {'image': (filename, image_bytes, 'multipart/form-data')}
@@ -162,13 +167,15 @@ class BingVisualSearchProvider(ReverseImageSearchProvider):
                                 source="Bing Visual Search",
                                 platform=platform,
                                 is_social_media=bool(platform),
-                                published_at=val.get("datePublished")
+                                similarity="Potential Match (Bing)",
+                                published_at=val.get("datePublished"),
+                                discovered_at=now_iso
                             ))
         return results
 
 class RapidApiProvider(ReverseImageSearchProvider):
     """
-    RapidAPI Reverse Image Search provider (supports Lens/Visual search endpoints).
+    RapidAPI Reverse Image Search provider.
     """
     def __init__(self, api_key: str, host: str):
         self.api_key = api_key
@@ -180,13 +187,14 @@ class RapidApiProvider(ReverseImageSearchProvider):
 
     async def search(self, image_bytes: bytes, filename: str, image_url: Optional[str] = None) -> List[SearchResultItem]:
         if not self.api_key:
-            raise ValueError("RapidAPI key is not configured")
+            raise ValueError("Reverse-image search provider is not configured.")
 
         headers = {
             "X-RapidAPI-Key": self.api_key,
             "X-RapidAPI-Host": self.host
         }
         results: List[SearchResultItem] = []
+        now_iso = datetime.now(timezone.utc).isoformat()
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             files = {"file": (filename, image_bytes, "image/jpeg")}
@@ -210,76 +218,79 @@ class RapidApiProvider(ReverseImageSearchProvider):
                     thumbnail=item.get("thumbnail"),
                     source="RapidAPI Lens",
                     platform=platform,
-                    is_social_media=bool(platform)
+                    is_social_media=bool(platform),
+                    similarity="Potential Match (RapidAPI)",
+                    discovered_at=now_iso
                 ))
         return results
 
 class DemoModeProvider(ReverseImageSearchProvider):
     """
-    Explicitly labeled offline demonstration provider.
-    Used ONLY when ALLOW_DEMO_FALLBACK=True and no external API key is configured.
-    Labels all output with clear [DEMO MODE - MOCK DATA] tags.
+    Explicitly labeled deterministic offline demonstration provider.
+    Used ONLY for demonstrating UI, canonical hashing, and blockchain workflows when no live API key is configured.
+    Labels all output with prominent 'DEMO DATA — NOT A LIVE SEARCH RESULT' warnings.
     """
     @property
     def provider_name(self) -> str:
-        return "Demo Mode Provider [MOCK DATA]"
+        return "Demo Provider [DEMO DATA — NOT A LIVE SEARCH RESULT]"
 
     async def search(self, image_bytes: bytes, filename: str, image_url: Optional[str] = None) -> List[SearchResultItem]:
-        # Realistic sample results clearly marked as demonstration data
         demo_items = [
             SearchResultItem(
-                title="Verified Photography Showcase — Public Instagram Archive",
+                title="Public Web Photography Showcase (Instagram Archive)",
                 url="https://www.instagram.com/p/C_DemoPhotoRecord2026",
                 domain="instagram.com",
                 thumbnail="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80",
-                source="Demo Simulation (Instagram Search Result)",
+                source="Demo Simulation (Public Instagram Post)",
                 platform="Instagram",
                 is_social_media=True,
-                similarity="94.8% Match",
+                similarity="Potential Match (Demo Sample)",
                 published_at="2026-08-14T10:22:00Z",
-                raw_metadata={"note": "DEMO MODE — Sample social media result for offline test verification"}
+                discovered_at="2026-09-06T12:00:00Z",
+                raw_metadata={"note": "DEMO DATA — NOT A LIVE SEARCH RESULT"}
             ),
             SearchResultItem(
-                title="Speaker Profile & Portrait — Open Tech Conference (X/Twitter Post)",
+                title="Keynote Speaker Portrait — Open Tech Summit (X/Twitter Post)",
                 url="https://x.com/tech_innovator/status/1827394018274918273",
                 domain="x.com",
                 thumbnail="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80",
-                source="Demo Simulation (X/Twitter Search Result)",
+                source="Demo Simulation (Public X/Twitter Post)",
                 platform="X (Twitter)",
                 is_social_media=True,
-                similarity="89.2% Match",
-                published_at="2026-07-29T18:40:12Z"
+                similarity="Potential Match (Demo Sample)",
+                published_at="2026-07-29T18:40:12Z",
+                discovered_at="2026-09-06T12:00:00Z"
             ),
             SearchResultItem(
-                title="Global Developer Community Spotlight on Reddit",
+                title="Global Developer Community Portrait on Reddit",
                 url="https://www.reddit.com/r/technology/comments/1exdemo/ai_face_blockchain_evidence_showcase/",
                 domain="reddit.com",
                 thumbnail="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=300&q=80",
-                source="Demo Simulation (Reddit Web Match)",
+                source="Demo Simulation (Public Reddit Post)",
                 platform="Reddit",
                 is_social_media=True,
-                similarity="83.5% Match",
-                published_at="2026-08-01T04:15:30Z"
+                similarity="Potential Match (Demo Sample)",
+                published_at="2026-08-01T04:15:30Z",
+                discovered_at="2026-09-06T12:00:00Z"
             )
         ]
         return demo_items
 
 class ReverseSearchService:
     """
-    High-level reverse image search service factory and coordinator.
+    Reverse image search service factory and coordinator.
     """
     def __init__(self):
-        self._provider = self._create_provider()
+        pass
 
     def _create_provider(self) -> ReverseImageSearchProvider:
-        prov_name = settings.REVERSE_IMAGE_PROVIDER.lower().strip()
-        api_key = settings.REVERSE_IMAGE_API_KEY.strip()
+        prov_name = settings.active_search_provider
+        api_key = settings.active_search_api_key
 
         if prov_name == "serpapi":
             if api_key:
                 return SerpApiProvider(api_key=api_key, engine=settings.SERPAPI_ENGINE)
             elif settings.ALLOW_DEMO_FALLBACK:
-                logger.warning("No SerpApi key supplied; falling back to labeled DemoModeProvider.")
                 return DemoModeProvider()
             else:
                 return SerpApiProvider(api_key="", engine=settings.SERPAPI_ENGINE)
@@ -310,24 +321,36 @@ class ReverseSearchService:
 
     async def execute_search(self, image_bytes: bytes, filename: str, image_url: Optional[str] = None) -> ReverseSearchResponse:
         """
-        Execute reverse image search, filter results for social media platforms,
-        and return a structured response.
+        Execute reverse image search across configured provider.
         """
         provider = self._create_provider()
         is_demo = isinstance(provider, DemoModeProvider)
-        demo_badge = "DEMO MODE — MOCK DATA (Configure REVERSE_IMAGE_API_KEY for live search)" if is_demo else None
+        demo_badge = "DEMO DATA — NOT A LIVE SEARCH RESULT (Set REVERSE_SEARCH_API_KEY in .env for live discovery)" if is_demo else None
 
         try:
             results = await provider.search(image_bytes=image_bytes, filename=filename, image_url=image_url)
             
-            # Find primary social media match
+            if not results:
+                return ReverseSearchResponse(
+                    success=True,
+                    provider=provider.provider_name,
+                    results_count=0,
+                    match_status="NOT_FOUND",
+                    social_match_found=False,
+                    primary_match=None,
+                    all_results=[],
+                    is_demo_mode=is_demo,
+                    demo_badge_message=demo_badge
+                )
+
             social_matches = [r for r in results if r.is_social_media]
-            primary_match = social_matches[0] if social_matches else (results[0] if results else None)
+            primary_match = social_matches[0] if social_matches else results[0]
             
             return ReverseSearchResponse(
                 success=True,
                 provider=provider.provider_name,
                 results_count=len(results),
+                match_status="FOUND" if not is_demo else "POSSIBLE_MATCH",
                 social_match_found=bool(social_matches),
                 primary_match=primary_match,
                 all_results=results,
@@ -335,28 +358,28 @@ class ReverseSearchService:
                 demo_badge_message=demo_badge
             )
         except Exception as e:
-            logger.error(f"Reverse image search failed: {e}")
-            # If demo fallback is allowed, provide demo results with clear warning
+            logger.warning(f"Reverse image search query failed: {e}")
             if settings.ALLOW_DEMO_FALLBACK and not is_demo:
-                logger.info("Falling back to labeled DemoModeProvider due to provider failure.")
                 demo_prov = DemoModeProvider()
                 demo_res = await demo_prov.search(image_bytes, filename, image_url)
                 return ReverseSearchResponse(
                     success=True,
-                    provider="Demo Mode Fallback (Live Provider Error)",
+                    provider="Demo Provider [DEMO DATA — NOT A LIVE SEARCH RESULT]",
                     results_count=len(demo_res),
+                    match_status="POSSIBLE_MATCH",
                     social_match_found=True,
                     primary_match=demo_res[0],
                     all_results=demo_res,
                     is_demo_mode=True,
-                    demo_badge_message=f"DEMO MODE — Live search failed ({str(e)}). Displaying test mock results.",
-                    error_message=str(e)
+                    demo_badge_message=f"DEMO DATA — Live search notice ({str(e)}). Showing demo sample data.",
+                    error_message=None
                 )
 
             return ReverseSearchResponse(
                 success=False,
                 provider=provider.provider_name,
                 results_count=0,
+                match_status="ERROR",
                 social_match_found=False,
                 primary_match=None,
                 all_results=[],

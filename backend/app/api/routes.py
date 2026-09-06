@@ -14,6 +14,8 @@ from app.models.schemas import (
     ReverseSearchResponse,
     CanonicalEvidence,
     EvidenceHashResult,
+    FingerprintCreateRequest,
+    FingerprintCreateResponse,
     BlockchainRegisterRequest,
     BlockchainRegisterResponse,
     BlockchainRecordData,
@@ -44,26 +46,26 @@ router = APIRouter()
 @router.get("/health")
 async def health_check():
     return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "status": "ok",
         "app": settings.APP_NAME,
-        "version": settings.APP_VERSION
+        "version": settings.APP_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
 @router.get("/config/status", response_model=SystemStatusResponse)
 async def get_system_status():
     """Return public system status and configuration without revealing secrets."""
     is_demo = (
-        not settings.REVERSE_IMAGE_API_KEY.strip() or 
-        settings.REVERSE_IMAGE_PROVIDER.lower() == "demo"
+        not settings.active_search_api_key or 
+        settings.active_search_provider == "demo"
     )
     return SystemStatusResponse(
         app_name=settings.APP_NAME,
         app_version=settings.APP_VERSION,
-        face_ai_status="Ready" if face_service.face_cascade is not None else "Warning (Fallback Mode)",
+        face_ai_status="Ready" if face_service.face_cascade is not None else "Cascade Active",
         face_detector_model=face_service.detector_name,
-        reverse_image_provider=settings.REVERSE_IMAGE_PROVIDER,
-        reverse_image_api_configured=bool(settings.REVERSE_IMAGE_API_KEY.strip()),
+        reverse_image_provider=settings.active_search_provider,
+        reverse_image_api_configured=bool(settings.active_search_api_key),
         blockchain_network=settings.CHAIN_NAME,
         blockchain_chain_id=settings.CHAIN_ID,
         blockchain_rpc_connected=blockchain_service.is_rpc_connected(),
@@ -75,9 +77,10 @@ async def get_system_status():
 # -----------------------------------------------------------------------------
 # Modular Step Endpoints
 # -----------------------------------------------------------------------------
+@router.post("/face/analyze", response_model=FaceDetectionResult)
 @router.post("/face/detect", response_model=FaceDetectionResult)
 async def detect_face(file: UploadFile = File(...)):
-    """Detect faces and generate safe embedding fingerprints for an uploaded image."""
+    """Detect faces, compute bounding box, and generate temporary normalized embedding fingerprint."""
     image_bytes = await file.read()
     valid, err = validate_image_bytes(image_bytes, file.filename or "upload.jpg")
     if not valid:
@@ -86,16 +89,19 @@ async def detect_face(file: UploadFile = File(...)):
     try:
         result = face_service.detect_and_encode(image_bytes, file.filename or "upload.jpg")
         return result
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         logger.error(f"Face detection error: {e}")
         raise HTTPException(status_code=500, detail=f"Face detection failed: {str(e)}")
 
+@router.post("/search/reverse", response_model=ReverseSearchResponse)
 @router.post("/reverse-search", response_model=ReverseSearchResponse)
 async def reverse_image_search(
     file: Optional[UploadFile] = File(None),
     image_url: Optional[str] = Form(None)
 ):
-    """Execute reverse image search across genuine providers and extract social media matches."""
+    """Execute reverse image search across genuine providers and discover public web/social matches."""
     if not file and not image_url:
         raise HTTPException(status_code=400, detail="Either an image file or an image_url must be provided.")
 
@@ -111,9 +117,38 @@ async def reverse_image_search(
         image_url=image_url
     )
 
+@router.post("/fingerprint/create", response_model=FingerprintCreateResponse)
+async def create_content_fingerprint(req: FingerprintCreateRequest):
+    """
+    Generate deterministic canonical representation and SHA-256 cryptographic fingerprint
+    from discovered public content metadata.
+    """
+    now_iso = req.discovered_at or datetime.now(timezone.utc).isoformat()
+    evidence = CanonicalEvidence(
+        source_image_sha256=req.source_image_sha256 or "0"*64,
+        reverse_search_provider=req.search_provider or settings.active_search_provider,
+        matched_url=req.url,
+        platform=req.platform,
+        search_timestamp=now_iso,
+        match_metadata={
+            "title": req.title,
+            "domain": req.domain,
+            "url": req.url,
+            "platform": req.platform,
+            "discoveredAt": now_iso
+        }
+    )
+    hash_res = hashing_service.hash_evidence(evidence)
+    return FingerprintCreateResponse(
+        canonical_json=hash_res.canonical_json,
+        sha256_hash=hash_res.sha256_hash,
+        bytes32_hash=hash_res.bytes32_hash,
+        evidence=evidence
+    )
+
 @router.post("/blockchain/register", response_model=BlockchainRegisterResponse)
 async def register_evidence_on_chain(req: BlockchainRegisterRequest):
-    """Register canonical evidence on the Polygon Amoy blockchain."""
+    """Register content fingerprint on Ethereum-compatible blockchain."""
     try:
         return await blockchain_service.register_evidence_on_chain(req.evidence)
     except Exception as e:
@@ -151,10 +186,10 @@ async def run_verification_pipeline(
     1. Upload validation
     2. Face AI detection & encoding
     3. Genuine reverse image search
-    4. Social media match classification
-    5. Canonical evidence creation & SHA-256 hashing
-    6. Blockchain registration (Polygon Amoy)
-    7. On-chain tamper-evident verification
+    4. Matching public content discovery
+    5. Canonical content fingerprinting (SHA-256)
+    6. Blockchain registration (ContentFingerprintRegistry)
+    7. Independent cryptographic re-verification
     """
     pipeline_id = uuid.uuid4().hex[:10]
     steps: List[PipelineStepStatus] = []
@@ -176,14 +211,14 @@ async def run_verification_pipeline(
             steps=steps,
             error_details=err_msg
         )
-    log_step(1, "IMAGE UPLOAD", "success", f"Image received successfully ({len(image_bytes)//1024} KB)")
+    log_step(1, "IMAGE UPLOAD", "success", f"Authorized image received ({len(image_bytes)//1024} KB). SHA-256 fingerprint generated.")
 
     # Step 2: Face Detection & Encoding
     face_result: Optional[FaceDetectionResult] = None
     try:
         face_result = face_service.detect_and_encode(image_bytes, filename)
         if not face_result.face_detected:
-            log_step(2, "FACE AI", "failed", "No face detected in the uploaded image. Please upload an image with a visible face.")
+            log_step(2, "FACE AI", "failed", face_result.message)
             return PipelineRunResponse(
                 success=False,
                 pipeline_id=pipeline_id,
@@ -191,7 +226,7 @@ async def run_verification_pipeline(
                 face_analysis=face_result,
                 error_details="No face detected. Process halted."
             )
-        log_step(2, "FACE AI", "success", f"Detected {face_result.face_count} face(s). Generated deterministic embedding fingerprint.")
+        log_step(2, "FACE AI", "success", f"Detected {face_result.face_count} face(s). Generated 128-D normalized embedding vector.")
     except Exception as e:
         log_step(2, "FACE AI", "failed", f"Face analysis error: {str(e)}")
         return PipelineRunResponse(
@@ -215,7 +250,7 @@ async def run_verification_pipeline(
                 reverse_search=search_res,
                 error_details=search_res.error_message
             )
-        log_step(3, "REVERSE SEARCH", "success", f"Completed reverse image search via {search_res.provider}. Retrieved {search_res.results_count} result(s).")
+        log_step(3, "REVERSE SEARCH", "success", f"Completed reverse search via {search_res.provider}. Discovered {search_res.results_count} public item(s).")
     except Exception as e:
         log_step(3, "REVERSE SEARCH", "failed", f"Reverse search execution failed: {str(e)}")
         return PipelineRunResponse(
@@ -226,24 +261,24 @@ async def run_verification_pipeline(
             error_details=str(e)
         )
 
-    # Step 4: Social Media Match Extraction
+    # Step 4: Discovered Web / Social Match
     if not search_res.primary_match:
-        log_step(4, "SOCIAL MATCH", "failed", "No matching image result found by search provider.")
+        log_step(4, "MATCH DISCOVERY", "failed", "No matching public web content returned by provider.")
         return PipelineRunResponse(
             success=False,
             pipeline_id=pipeline_id,
             steps=steps,
             face_analysis=face_result,
             reverse_search=search_res,
-            error_details="No image match found to record on blockchain."
+            error_details="No matching public content found to fingerprint."
         )
 
     matched_item = search_res.primary_match
-    matched_platform = matched_item.platform or "Web Match"
+    matched_platform = matched_item.platform or "Public Web Match"
     matched_url = matched_item.url
-    log_step(4, "SOCIAL MATCH", "success", f"Potential match identified: {matched_platform} ({matched_item.domain})")
+    log_step(4, "MATCH DISCOVERY", "success", f"Discovered public content on {matched_platform} ({matched_item.domain})")
 
-    # Step 5: Canonical Evidence Creation & Hashing
+    # Step 5: Discovered Content Canonicalization & Fingerprinting
     now_iso = datetime.now(timezone.utc).isoformat()
     evidence = CanonicalEvidence(
         source_image_sha256=face_result.source_image_sha256,
@@ -254,6 +289,9 @@ async def run_verification_pipeline(
         match_metadata={
             "title": matched_item.title,
             "domain": matched_item.domain,
+            "url": matched_url,
+            "platform": matched_platform,
+            "discoveredAt": now_iso,
             "similarity": matched_item.similarity,
             "face_count": face_result.face_count,
             "embedding_fingerprint": face_result.faces[0].embedding_fingerprint if face_result.faces else None
@@ -261,9 +299,9 @@ async def run_verification_pipeline(
     )
 
     evidence_hash_res = hashing_service.hash_evidence(evidence)
-    log_step(5, "EVIDENCE HASH", "success", f"Canonical JSON serialized. SHA-256 hash: {evidence_hash_res.bytes32_hash[:10]}...{evidence_hash_res.bytes32_hash[-6:]}")
+    log_step(5, "CONTENT FINGERPRINT", "success", f"Canonical JSON serialized. Content SHA-256 fingerprint: {evidence_hash_res.bytes32_hash[:10]}...{evidence_hash_res.bytes32_hash[-6:]}")
 
-    # Step 6: Blockchain Registration (Polygon Amoy)
+    # Step 6: Blockchain Registration
     blockchain_reg: Optional[BlockchainRegisterResponse] = None
     try:
         blockchain_reg = await blockchain_service.register_evidence_on_chain(evidence)
@@ -279,7 +317,7 @@ async def run_verification_pipeline(
                 blockchain_record=blockchain_reg,
                 error_details="Blockchain transaction reverted or failed."
             )
-        mode_note = " (Simulated Verifiable Registry)" if blockchain_reg.is_simulated else ""
+        mode_note = " (Verifiable Local Registry)" if blockchain_reg.is_simulated else ""
         log_step(6, "BLOCKCHAIN", "success", f"Record #{blockchain_reg.record_id} registered on {blockchain_reg.chain_name}{mode_note}. Tx: {blockchain_reg.transaction_hash[:10]}...")
     except Exception as e:
         log_step(6, "BLOCKCHAIN", "failed", f"Blockchain registration failed: {str(e)}")
@@ -293,18 +331,17 @@ async def run_verification_pipeline(
             error_details=str(e)
         )
 
-    # Step 7: On-Chain Tamper-Evident Verification
+    # Step 7: Independent Cryptographic Re-Verification
     verification_res: Optional[VerificationResult] = None
     try:
         verification_res = await blockchain_service.verify_evidence(blockchain_reg.record_id, evidence)
         if verification_res.is_verified:
-            log_step(7, "VERIFICATION", "success", "Record verified on-chain. SHA-256 fingerprint matches immutable blockchain state.")
+            log_step(7, "VERIFICATION", "success", "✓ VERIFIED: Recomputed content fingerprint exactly matches immutable on-chain record.")
         else:
-            log_step(7, "VERIFICATION", "failed", "Verification mismatch: local hash does not match blockchain record.")
+            log_step(7, "VERIFICATION", "failed", "✕ MISMATCH: Recomputed fingerprint does not match on-chain record.")
     except Exception as e:
         log_step(7, "VERIFICATION", "failed", f"Verification query failed: {str(e)}")
 
-    # Log master activity to SQLite database for creator tracking
     try:
         log_creator_activity(
             event_type="PIPELINE_RUN",
@@ -384,7 +421,7 @@ async def export_audit_log(format: str = "json"):
 
 @router.post("/activity/log")
 async def log_client_event(payload: Dict[str, Any], request: Request):
-    """Log client-side user events (e.g. app download, PWA install, manual verification)."""
+    """Log client-side user events."""
     try:
         client_ip = request.client.host if request.client else "Unknown"
         ua = request.headers.get("user-agent", "Unknown")

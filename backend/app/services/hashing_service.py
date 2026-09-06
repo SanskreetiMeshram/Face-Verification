@@ -42,7 +42,8 @@ class HashingService:
             evidence=evidence,
             canonical_json=canonical_str,
             sha256_hash=sha256_hex,
-            bytes32_hash=bytes32_hash
+            bytes32_hash=bytes32_hash,
+            content_fingerprint=sha256_hex
         )
 
     @classmethod

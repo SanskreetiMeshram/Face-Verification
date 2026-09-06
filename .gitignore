@@ -17,6 +17,8 @@ backend_venv/
 
 # Node / Frontend
 node_modules/
+**/node_modules/
+**/cache/
 dist/
 dist-ssr/
 *.local

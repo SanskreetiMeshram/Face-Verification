@@ -6,12 +6,13 @@ import logging
 from typing import List, Tuple, Optional
 from app.models.schemas import FaceDetectionResult, FaceDetail, BoundingBox
 from app.utils.helpers import compute_sha256, ensure_temp_dir
+from app.config import settings
 
 logger = logging.getLogger("facechain.face_service")
 
 class FaceService:
     def __init__(self):
-        self.detector_name = "OpenCV Neural & Cascade Face Engine"
+        self.detector_name = "OpenCV Neural & Multi-Cascade Face Engine"
         self._init_detectors()
 
     def _init_detectors(self):
@@ -45,6 +46,7 @@ class FaceService:
         """
         Generate a normalized 128-dimensional deterministic feature representation
         from the face region using multi-scale Gabor and spatial frequency moments.
+        Temporary mathematical representation for computer vision processing.
         """
         try:
             if face_crop.size == 0:
@@ -96,60 +98,96 @@ class FaceService:
         return hashlib.sha256(raw_bytes).hexdigest()
 
     def _detect_faces_multiscale(self, gray: np.ndarray, img: np.ndarray) -> List[Tuple[int, int, int, int]]:
-        """Run multi-cascade detector to identify face bounding boxes."""
-        raw_boxes = []
+        """
+        Run multi-tier face detection across cascades, scales, and contours.
+        Returns empty list if no face or feature structure is present.
+        """
+        h, w = gray.shape[:2]
+        
+        # Check standard deviation: blank / flat / uninformative images have near zero std
+        std_dev = float(np.std(gray))
+        if std_dev < 10.0:
+            return []
 
-        # 1. Primary cascade
+        raw_boxes: List[Tuple[int, int, int, int]] = []
+
+        # Enhance contrast with CLAHE for low-light or uneven lighting
+        try:
+            clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+            enhanced_gray = clahe.apply(gray)
+        except Exception:
+            enhanced_gray = gray
+
+        # Multi-scale downscale helper for large mobile camera photos
+        scale_ratio = 1.0
+        work_gray = enhanced_gray
+        if max(h, w) > 1280:
+            scale_ratio = 1280.0 / float(max(h, w))
+            work_gray = cv2.resize(enhanced_gray, (int(w * scale_ratio), int(h * scale_ratio)), interpolation=cv2.INTER_AREA)
+
+        # Tier 1: Primary frontal face cascade
         if self.face_cascade is not None:
-            boxes1 = self.face_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=4, minSize=(25, 25)
-            )
-            if len(boxes1) > 0:
-                raw_boxes.extend(boxes1)
+            for scale in [1.08, 1.15, 1.25]:
+                for neighbors in [4, 3, 2]:
+                    boxes = self.face_cascade.detectMultiScale(
+                        work_gray, scaleFactor=scale, minNeighbors=neighbors, minSize=(24, 24)
+                    )
+                    if len(boxes) > 0:
+                        for b in boxes:
+                            if scale_ratio != 1.0:
+                                raw_boxes.append((int(b[0] / scale_ratio), int(b[1] / scale_ratio), int(b[2] / scale_ratio), int(b[3] / scale_ratio)))
+                            else:
+                                raw_boxes.append((int(b[0]), int(b[1]), int(b[2]), int(b[3])))
+                        break
+                if len(raw_boxes) > 0:
+                    break
 
-        # 2. Alt cascade if nothing found
+        # Tier 2: Alt2 frontal face cascade
         if len(raw_boxes) == 0 and self.face_alt_cascade is not None:
             boxes2 = self.face_alt_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=3, minSize=(25, 25)
+                work_gray, scaleFactor=1.1, minNeighbors=3, minSize=(20, 20)
             )
-            if len(boxes2) > 0:
-                raw_boxes.extend(boxes2)
+            for b in boxes2:
+                if scale_ratio != 1.0:
+                    raw_boxes.append((int(b[0] / scale_ratio), int(b[1] / scale_ratio), int(b[2] / scale_ratio), int(b[3] / scale_ratio)))
+                else:
+                    raw_boxes.append((int(b[0]), int(b[1]), int(b[2]), int(b[3])))
 
-        # 3. Profile cascade if nothing found
+        # Tier 3: Profile face cascade
         if len(raw_boxes) == 0 and self.profile_cascade is not None:
             boxes3 = self.profile_cascade.detectMultiScale(
-                gray, scaleFactor=1.1, minNeighbors=3, minSize=(25, 25)
+                work_gray, scaleFactor=1.1, minNeighbors=3, minSize=(20, 20)
             )
-            if len(boxes3) > 0:
-                raw_boxes.extend(boxes3)
+            for b in boxes3:
+                if scale_ratio != 1.0:
+                    raw_boxes.append((int(b[0] / scale_ratio), int(b[1] / scale_ratio), int(b[2] / scale_ratio), int(b[3] / scale_ratio)))
+                else:
+                    raw_boxes.append((int(b[0]), int(b[1]), int(b[2]), int(b[3])))
 
-        # 4. Fallback: Structural contour & skin-tone detection if cascade misses stylized/drawing images
-        if len(raw_boxes) == 0:
-            h, w = gray.shape[:2]
-            std_dev = float(np.std(gray))
-            if std_dev > 15:
-                # Find contours
-                blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-                thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-                contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                for cnt in contours:
-                    area = cv2.contourArea(cnt)
-                    if area > (w * h * 0.05):
-                        rx, ry, rw, rh = cv2.boundingRect(cnt)
-                        aspect = float(rw) / float(rh) if rh > 0 else 0
-                        if 0.5 <= aspect <= 1.5:
-                            raw_boxes.append((rx, ry, rw, rh))
-                            break
+        # Tier 4: Eye landmark cluster detection (paired facial eyes)
+        if len(raw_boxes) == 0 and self.eye_cascade is not None:
+            eyes = self.eye_cascade.detectMultiScale(work_gray, scaleFactor=1.1, minNeighbors=3, minSize=(15, 15))
+            if len(eyes) >= 2:
+                min_ex = min(e[0] for e in eyes)
+                max_ex = max(e[0] + e[2] for e in eyes)
+                min_ey = min(e[1] for e in eyes)
+                head_w = int((max_ex - min_ex) * 1.8)
+                head_h = int(head_w * 1.3)
+                head_x = max(0, min_ex - int(head_w * 0.2))
+                head_y = max(0, min_ey - int(head_h * 0.3))
+                if scale_ratio != 1.0:
+                    raw_boxes.append((int(head_x / scale_ratio), int(head_y / scale_ratio), int(head_w / scale_ratio), int(head_h / scale_ratio)))
+                else:
+                    raw_boxes.append((head_x, head_y, head_w, head_h))
 
-        # Filter out duplicates with Non-Maximum Suppression / IoU
+        # Filter duplicates with Non-Maximum Suppression / IoU
         clean_boxes = []
         for b in raw_boxes:
             bx, by, bw, bh = int(b[0]), int(b[1]), int(b[2]), int(b[3])
-            # Check overlap with existing
             overlap = False
             for cb in clean_boxes:
                 cx, cy, cw, ch = cb
-                if abs(bx - cx) < 30 and abs(by - cy) < 30:
+                if abs(bx - cx) < (bw * 0.4) and abs(by - cy) < (bh * 0.4):
                     overlap = True
                     break
             if not overlap:
@@ -159,7 +197,7 @@ class FaceService:
 
     def detect_and_encode(self, image_bytes: bytes, filename: str = "upload.jpg") -> FaceDetectionResult:
         """
-        Detect faces in image bytes, compute bounding boxes, confidence, and safe embedding fingerprints.
+        Validate image, detect faces, compute bounding boxes, and generate safe embedding fingerprints.
         """
         source_sha256 = compute_sha256(image_bytes)
         
@@ -168,9 +206,22 @@ class FaceService:
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
         if img is None:
-            raise ValueError("Failed to decode image. File may be corrupted or in an unsupported format.")
+            try:
+                from PIL import Image
+                import io
+                pil_img = Image.open(io.BytesIO(image_bytes)).convert('RGB')
+                img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
+            except Exception as ex:
+                raise ValueError(f"Failed to decode image. File may be corrupted or in an unsupported format: {ex}")
             
         height, width = img.shape[:2]
+        
+        # Validate dimensions
+        if width < settings.MIN_IMAGE_DIMENSION or height < settings.MIN_IMAGE_DIMENSION:
+            raise ValueError(f"Image dimensions ({width}x{height}) are too small. Minimum required: {settings.MIN_IMAGE_DIMENSION}x{settings.MIN_IMAGE_DIMENSION}px")
+        if width > settings.MAX_IMAGE_DIMENSION or height > settings.MAX_IMAGE_DIMENSION:
+            raise ValueError(f"Image dimensions ({width}x{height}) exceed maximum allowed ({settings.MAX_IMAGE_DIMENSION}px)")
+
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         
         # Detect faces across scales
@@ -180,7 +231,6 @@ class FaceService:
         annotated_img = img.copy()
 
         for idx, (x, y, w, h) in enumerate(raw_faces):
-            # Clamp coordinates
             x = max(0, min(width - 1, x))
             y = max(0, min(height - 1, y))
             w = max(10, min(width - x, w))
@@ -202,47 +252,46 @@ class FaceService:
                 normalized_height=norm_h
             )
             
-            # Extract face crop
             face_crop = img[y:y+h, x:x+w]
             embedding_vec = self._generate_face_embedding(face_crop)
             fingerprint = self._compute_embedding_fingerprint(embedding_vec)
             
-            # Confidence score estimation based on aspect ratio & contrast
             contrast_score = float(np.std(face_crop)) / 128.0 if face_crop.size > 0 else 0.5
             confidence = min(0.99, max(0.85, round(0.88 + min(0.1, contrast_score * 0.1), 3)))
+            quality_score = round(min(1.0, contrast_score), 2)
             
-            # Detect eye landmarks inside face region if possible
             landmarks = {}
             if self.eye_cascade is not None and face_crop.size > 0:
-                face_gray = gray[y:y+h, x:x+w]
-                eyes = self.eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=2)
-                if len(eyes) >= 2:
-                    landmarks["left_eye"] = [int(x + eyes[0][0] + eyes[0][2]//2), int(y + eyes[0][1] + eyes[0][3]//2)]
-                    landmarks["right_eye"] = [int(x + eyes[1][0] + eyes[1][2]//2), int(y + eyes[1][1] + eyes[1][3]//2)]
+                try:
+                    face_gray = gray[y:y+h, x:x+w]
+                    eyes = self.eye_cascade.detectMultiScale(face_gray, scaleFactor=1.1, minNeighbors=2)
+                    if len(eyes) >= 2:
+                        landmarks["left_eye"] = [int(x + eyes[0][0] + eyes[0][2]//2), int(y + eyes[0][1] + eyes[0][3]//2)]
+                        landmarks["right_eye"] = [int(x + eyes[1][0] + eyes[1][2]//2), int(y + eyes[1][1] + eyes[1][3]//2)]
+                except Exception:
+                    pass
 
             detail = FaceDetail(
                 index=idx + 1,
                 confidence=confidence,
+                quality_score=quality_score,
+                embedding_dimension=128,
                 bounding_box=bbox,
                 landmarks=landmarks if landmarks else None,
                 embedding_fingerprint=fingerprint
             )
             face_details.append(detail)
             
-            # Draw elegant bounding box
+            # Draw cyber-styled bounding box
             cv2.rectangle(annotated_img, (x, y), (x+w, y+h), (217, 182, 6), 2)
             corner_len = max(10, min(w, h) // 6)
             color_accent = (246, 92, 139)
-            # Top-Left
             cv2.line(annotated_img, (x, y), (x + corner_len, y), color_accent, 4)
             cv2.line(annotated_img, (x, y), (x, y + corner_len), color_accent, 4)
-            # Top-Right
             cv2.line(annotated_img, (x + w, y), (x + w - corner_len, y), color_accent, 4)
             cv2.line(annotated_img, (x + w, y), (x + w, y + corner_len), color_accent, 4)
-            # Bottom-Left
             cv2.line(annotated_img, (x, y + h), (x + corner_len, y + h), color_accent, 4)
             cv2.line(annotated_img, (x, y + h), (x, y + h - corner_len), color_accent, 4)
-            # Bottom-Right
             cv2.line(annotated_img, (x + w, y + h), (x + w - corner_len, y + h), color_accent, 4)
             cv2.line(annotated_img, (x + w, y + h), (x + w, y + corner_len), color_accent, 4)
             
@@ -250,22 +299,23 @@ class FaceService:
             cv2.putText(annotated_img, label_text, (x, max(20, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
 
         annotated_url = None
-        if len(face_details) > 0:
+        face_count = len(face_details)
+        has_faces = face_count > 0
+
+        if has_faces:
             preview_filename = f"annotated_{source_sha256[:12]}.jpg"
             preview_path = os.path.join(ensure_temp_dir(), preview_filename)
             cv2.imwrite(preview_path, annotated_img)
             annotated_url = f"/api/temp/{preview_filename}"
 
-        face_count = len(face_details)
-        has_faces = face_count > 0
         primary_conf = face_details[0].confidence if has_faces else 0.0
 
         if face_count == 0:
-            message = "No face detected. Please upload a clear image containing a visible human face."
+            message = "No face detected in the uploaded image. Please upload a clear image containing a visible human face."
         elif face_count == 1:
-            message = "Face detected successfully. High-precision embedding fingerprint generated."
+            message = "Single face detected successfully. 128-dimensional embedding fingerprint generated."
         else:
-            message = f"{face_count} faces detected. Primary face selected for verification pipeline."
+            message = f"Multiple faces detected ({face_count}). For single-identity verification, please upload an image containing exactly one face."
 
         return FaceDetectionResult(
             face_detected=has_faces,
@@ -273,6 +323,7 @@ class FaceService:
             faces=face_details,
             primary_confidence=primary_conf,
             embedding_generated=has_faces,
+            embedding_dimension=128,
             source_image_sha256=source_sha256,
             image_width=width,
             image_height=height,
