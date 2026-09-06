@@ -1,283 +1,290 @@
-# FaceChain Verify — Face ID + Blockchain Verification Pipeline
+# FaceChain Verify
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Network: Polygon Amoy](https://img.shields.io/badge/Network-Polygon%20Amoy%20(80002)-8247E5.svg)](https://amoy.polygonscan.com/)
-[![Python: 3.10+](https://img.shields.io/badge/Python-3.10%2B-brightgreen.svg)](https://www.python.org/)
-[![React: 18](https://img.shields.io/badge/React-18%20%2B%20TypeScript-61DAFB.svg)](https://reactjs.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-Production%20Ready-009688.svg)](https://fastapi.tiangolo.com/)
-
-> **Detect a face. Find the image. Verify the evidence on-chain.**
-
-**FaceChain Verify** is a production-grade full-stack pipeline that detects and encodes faces from photos, discovers genuine indexed social media posts using real-world reverse-image search, generates canonical cryptographic evidence hashes, records immutable proofs on the **Polygon Amoy Testnet** smart contract, and performs on-chain tamper verification.
+> **Decentralized Biometric Evidence & Cryptographic Web Discovery Protocol**
+> Authorized Image → Multi-Tier Face AI → Genuine Reverse Search → Canonical Fingerprint → Blockchain Record → Independent Verification
 
 ---
 
-## 🌟 Key Highlights & Features
+## 1. Overview
+**FaceChain Verify** is an end-to-end, production-ready demonstration protocol designed to discover and register immutable cryptographic proof of publicly indexed web and social media content matching an authorized face image.
 
-- 🔍 **Real Face AI & Extraction**: Detects human faces with bounding boxes, facial landmarks, and generates a normalized 128-dimensional embedding representation.
-- 🛡️ **Zero Biometric Exposure on Blockchain**: Raw photos and biometric vectors are **never written to the public ledger**. Only deterministic SHA-256 evidence fingerprints and metadata are registered on-chain.
-- 🌐 **Genuine Reverse Image Search**: Configurable provider abstraction supporting **SerpApi (Google Lens / Google Images)**, **Azure Bing Visual Search**, **RapidAPI**, and **TinEye**. No hardcoded or fabricated search results.
-- 📱 **Automated Social Media Classification**: Dynamically identifies whether visual matches belong to Instagram, X (Twitter), TikTok, YouTube, Reddit, LinkedIn, or Facebook from real returned domains.
-- 🔒 **Deterministic Canonical Evidence Hashing**: Serializes evidence in RFC 8785 compliant canonical JSON and computes SHA-256 `bytes32` hashes.
-- ⛓️ **Polygon Amoy Smart Contract**: Integrates with `FaceMatchRegistry.sol` via `web3.py` for gas estimation, backend signing, transaction receipts, and Polygonscan explorer verification.
-- 🧪 **Interactive Tamper-Evident Lab**: Allows evaluators to modify evidence fields and instantly verify how the calculated hash mismatches the immutable blockchain record.
-- 🎨 **Modern Cyber-Security UI/UX**: Built with React, TypeScript, Tailwind CSS, Lucide icons, and Framer Motion with animated pipeline progress and interactive bounding box canvas.
+By combining computer vision face detection, genuine multi-provider reverse-image search, deterministic JSON canonicalization (RFC 8785 principles), and Ethereum-compatible smart contracts, FaceChain Verify creates a tamper-evident audit trail without ever exposing or storing raw biometric data.
 
 ---
 
-## 🏗️ Architecture & Pipeline Flow
+## 2. Problem
+1. **Unverifiable Web Content**: When visual media appears across public platforms, verifying its origin and indexing history is difficult.
+2. **Biometric Privacy Risks**: Centralized biometric databases expose sensitive personal data to surveillance, leakage, and unauthorized matching.
+3. **Evidence Tampering**: Digital metadata (timestamps, URLs, platforms) can easily be manipulated without cryptographic timestamps and tamper-evident ledgers.
 
-```text
-       ┌────────────────────────┐
-       │     Input Photo        │
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │   Face AI Detection    │  ──► Bounding Boxes, Landmarks & 128-D Fingerprint
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │  Reverse Image Search  │  ──► Queries Live Provider (SerpApi / Google Lens / Bing)
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │ Social Classification  │  ──► Identifies Instagram / X / TikTok / YouTube / Reddit
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │ Canonical Evidence     │  ──► Deterministic JSON (RFC 8785)
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │  SHA-256 Hashing       │  ──► EVM-compatible bytes32 fingerprint (0x...)
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │ Polygon Amoy Contract  │  ──► registerRecord(evidenceHash, resultUrl, platform)
-       └───────────┬────────────┘
-                   │
-                   ▼
-       ┌────────────────────────┐
-       │ Tamper Verification    │  ──► Compare Local Re-Hash vs. On-Chain Immutable Hash
-       └────────────────────────┘
+---
+
+## 3. Solution
+FaceChain Verify solves these challenges by establishing clear boundaries:
+- **Zero Identity Claims**: Does **NOT** identify individuals by name or compare against citizen databases.
+- **Zero Biometric Exposure**: Raw images and embedding vectors are **never** stored on-chain or persisted permanently.
+- **Cryptographic Immutability**: Discovered web metadata is canonically formatted and hashed with SHA-256 (`bytes32`). Only this cryptographic fingerprint is written to the blockchain.
+- **Independent Re-Verification**: Anyone can reconstruct the metadata object, recompute the SHA-256 digest, and independently confirm integrity against the smart contract.
+
+---
+
+## 4. Pipeline
+
+```
+INPUT (Authorized Image)
+      ↓
+FACE DETECTION (OpenCV Multi-Cascade & Contours)
+      ↓
+FACE ENCODING (128-D Temporary Normalized Representation)
+      ↓
+GENUINE REVERSE SEARCH (SerpApi / Google Lens, Bing, RapidAPI)
+      ↓
+PUBLIC RESULT (Live Discovered Public Web / Social Media Content)
+      ↓
+CONTENT FINGERPRINT (Deterministic JSON + SHA-256 Digest)
+      ↓
+BLOCKCHAIN (ContentFingerprintRegistry.sol Smart Contract)
+      ↓
+RECOMPUTE (Canonical Hash Regeneration)
+      ↓
+VERIFY (Cryptographic Comparison: VERIFIED vs MISMATCH)
 ```
 
 ---
 
-## 📁 Repository Structure
+## 5. Features
+- **Multi-Scale Face Detection**: OpenCV multi-cascade and contour detector validating face presence, bounding box, quality scores, and 128-D normalized embedding vectors.
+- **Genuine Reverse Image Search**: Live integrations with SerpApi (Google Lens & Google Reverse Image), Microsoft Bing Visual Search, and RapidAPI with explicit match states (`FOUND`, `POSSIBLE_MATCH`, `NOT_FOUND`, `ERROR`).
+- **Deterministic Canonical Serialization**: RFC-compliant JSON serialization (sorted keys, compact separators) ensuring identical hash generation across platforms.
+- **Solidity Smart Contract**: `ContentFingerprintRegistry.sol` (Solidity 0.8.20) for recording tamper-evident metadata fingerprints on Ethereum-compatible networks.
+- **Independent Re-Verification & Tamper Lab**: Real-time verification engine and interactive developer testing lab to demonstrate tamper detection.
+- **Premium Dark Dashboard**: Responsive React 18, TypeScript, Tailwind CSS, Lucide icons, glassmorphism UI, and PWA installation support.
+- **Comprehensive Testing Suite**: Pytest unit & integration tests, Hardhat smart contract tests, and full E2E pipeline verification.
 
-```text
+---
+
+## 6. Architecture & Technologies
+
+### Architecture Diagram
+See [docs/architecture.md](docs/architecture.md) for complete Mermaid diagrams and architectural breakdowns.
+
+### Technology Stack
+- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide React Icons.
+- **Backend**: Python 3.13 / 3.10+, FastAPI, Uvicorn, Pydantic v2, Web3.py.
+- **Computer Vision**: OpenCV (Open Source Computer Vision Library), NumPy.
+- **Blockchain**: Solidity 0.8.20, Hardhat, Ethers.js, Web3.py (Supports Local Hardhat Node and Polygon Amoy).
+- **Database**: SQLite (Local metadata & audit activity persistence).
+- **Testing**: Pytest (Backend & E2E), Hardhat / Mocha / Chai (Smart Contracts).
+
+---
+
+## 7. Face Processing
+- **Input Formats**: JPG, JPEG, PNG, WEBP.
+- **Validations**: File size (<= 10MB), image dimensions (min 50x50px, max 8000x8000px), corrupted header checks.
+- **Single-Face Policy**: Prefers exactly one clearly detectable face. Zero faces halts execution gracefully; multiple faces prompts single-subject upload.
+- **Ephemeral Embeddings**: Generates a temporary normalized 128-dimensional spatial feature moment vector for quality estimation. Biometric vectors are discarded after processing and never put on-chain.
+
+---
+
+## 8. Reverse Image Search
+Supported search providers:
+1. **SerpApi**: Google Lens / Google Reverse Image engine (`google_lens`, `google_reverse_image`).
+2. **Bing Visual Search**: Azure Cognitive Services Visual Search API.
+3. **RapidAPI**: Google Lens & Reverse Image endpoints.
+4. **Demo Mode Provider**: Deterministic local sample dataset clearly labeled `DEMO DATA — NOT A LIVE SEARCH RESULT` for offline testing.
+
+---
+
+## 9. Blockchain & Smart Contract
+- **Contract Name**: `ContentFingerprintRegistry.sol`
+- **Network**: Local Hardhat / Anvil (`http://127.0.0.1:8545`) or Ethereum Testnet (Polygon Amoy / Sepolia).
+- **Data Model Stored On-Chain**:
+  ```solidity
+  struct VerificationRecord {
+      bytes32 fingerprint;   // SHA-256 hash of canonical discovered metadata JSON
+      string sourceUrl;      // Discovered public web/social URL
+      uint256 timestamp;     // Block timestamp of registration
+      address submitter;     // Address of submitting wallet
+  }
+  mapping(bytes32 => VerificationRecord) public records;
+  ```
+- **Events**: Emits `FingerprintRegistered(bytes32 indexed fingerprint, string sourceUrl, uint256 timestamp, address indexed submitter)`.
+
+---
+
+## 10. Privacy & Ethics Statement
+> **IMPORTANT PRIVACY NOTICE**
+> This demonstration processes only images the user is authorized to use. It does NOT identify people by name or compare faces against a database of individuals. Blockchain records contain cryptographic metadata fingerprints, never raw biometric data or images.
+
+---
+
+## 11. Project Structure
+
+```
 facechain-verify/
-├── backend/
-│   ├── app/
-│   │   ├── api/
-│   │   │   └── routes.py              # FastAPI endpoints (Pipeline, Face, Search, Blockchain)
-│   │   ├── models/
-│   │   │   └── schemas.py             # Pydantic schemas and typed data models
-│   │   ├── services/
-│   │   │   ├── face_service.py        # OpenCV face detection & embedding fingerprinting
-│   │   │   ├── reverse_search.py      # Provider abstraction (SerpApi, Bing, RapidAPI, Demo)
-│   │   │   ├── hashing_service.py     # Deterministic JSON canonicalization & SHA-256
-│   │   │   └── blockchain_service.py  # Web3.py Polygon Amoy contract integration
-│   │   ├── utils/
-│   │   │   └── helpers.py             # Social regex classifier, secure filenames, validation
-│   │   ├── config.py                  # Pydantic settings & environment configuration
-│   │   └── main.py                    # FastAPI application entrypoint
-│   ├── tests/                         # Full automated test suite (12 tests)
-│   ├── requirements.txt               # Python backend dependencies
-│   └── .env.example                   # Environment template
-│
-├── contracts/
-│   ├── FaceMatchRegistry.sol          # Solidity 0.8.20 registry smart contract
-│   ├── FaceMatchRegistry.json         # Contract ABI definition
-│   └── deploy.py                      # Python Web3 deployment tool
-│
-├── frontend/
+├── frontend/                     # React + TypeScript + Vite UI
 │   ├── src/
-│   │   ├── components/
-│   │   │   ├── Header.tsx             # Navigation & connection indicators
-│   │   │   ├── ImageUploader.tsx      # Drag & drop upload + benchmark sample selector
-│   │   │   ├── CanvasBoundingBox.tsx  # Dynamic HTML5 canvas face bounding box overlay
-│   │   │   ├── PipelineProgress.tsx   # 7-step animated execution flow
-│   │   │   ├── FaceDetectionCard.tsx  # Face analysis metrics & embedding fingerprint
-│   │   │   ├── ReverseSearchCard.tsx  # Genuine search result & social badge
-│   │   │   ├── BlockchainCard.tsx     # Transaction hash, block height & explorer links
-│   │   │   ├── VerificationBadge.tsx  # Verified on-chain / mismatch status display
-│   │   │   ├── TamperTester.tsx       # Interactive tamper lab for evaluators
-│   │   │   ├── TechnicalDetails.tsx   # Collapsible architecture specification drawer
-│   │   │   └── LimitationsModal.tsx   # Known limitations & ethical AI disclosure
-│   │   ├── pages/
-│   │   │   ├── Dashboard.tsx          # Main pipeline dashboard
-│   │   │   ├── HistoryPage.tsx        # Searchable on-chain registry history
-│   │   │   ├── RecordDetail.tsx       # Historical record inspector with re-verification
-│   │   │   └── SettingsPage.tsx       # Live health status of all subsystems
-│   │   ├── services/
-│   │   │   └── api.ts                 # Typed API client
-│   │   ├── types/
-│   │   │   └── index.ts               # Shared TypeScript interfaces
-│   │   ├── App.tsx
-│   │   └── main.tsx
+│   │   ├── components/           # UI Cards, Uploader, TamperTester, Progress
+│   │   ├── pages/                # Dashboard, HistoryPage, TamperLab, Settings
+│   │   ├── services/api.ts       # Typed API Client
+│   │   └── types/index.ts        # TypeScript Interfaces
 │   ├── package.json
-│   ├── tailwind.config.js
 │   └── vite.config.ts
 │
-├── docker-compose.yml
+├── backend/                      # FastAPI Python Application
+│   ├── app/
+│   │   ├── main.py               # Application entrypoint & SPA mounting
+│   │   ├── config.py             # App settings & env loading
+│   │   ├── models/schemas.py     # Pydantic validation schemas
+│   │   ├── services/             # Face AI, Search, Hashing, Blockchain, Verification
+│   │   └── utils/helpers.py      # Image validation & domain classifier
+│   ├── tests/                    # Pytest test suite (19 test cases)
+│   ├── requirements.txt
+│   └── .env.example
+│
+├── blockchain/                   # Hardhat Smart Contract Environment
+│   ├── contracts/                # ContentFingerprintRegistry.sol
+│   ├── scripts/deploy.js         # Deployment script
+│   ├── test/                     # Hardhat Chai test suite (8 test cases)
+│   ├── hardhat.config.js
+│   └── package.json
+│
+├── sample/                       # Benchmark test guidelines & images
+│   └── README.md
+├── docs/                         # Architecture & Walkthrough Documentation
+│   ├── architecture.md
+│   └── demo.md
 ├── .gitignore
-└── README.md
+├── README.md
+├── docker-compose.yml
+└── LICENSE
 ```
 
 ---
 
-## ⚙️ Prerequisites & Environment
+## 12. Installation & Quick Start
 
-- **Python**: Version `3.10` or higher
-- **Node.js**: Version `18` or `20+` (and `npm`)
-- **Polygon Amoy Testnet Wallet**: Any EVM private key with testnet POL (obtain free tokens from [Polygon Faucet](https://faucet.polygon.technology/))
-- **Reverse Image Search API**: [SerpApi](https://serpapi.com/) API Key, Azure Bing Visual Search, or RapidAPI. (An explicitly labeled Demo Mode fallback is included if API keys are not yet configured).
+### Prerequisites
+- **Node.js**: v18+ (tested on Node v22.15.1)
+- **Python**: 3.10+ (tested on Python 3.13.2)
+- **Git**
 
 ---
 
-## 🚀 Quickstart Installation
-
-### 1. Clone & Setup Backend
-
-```bash
-# Clone the repository
-git clone https://github.com/your-username/facechain-verify.git
+### Step 1: Clone Repository
+```powershell
+git clone <YOUR_GITHUB_REPOSITORY_URL>
 cd facechain-verify
+```
 
-# Create Python Virtual Environment
-python -m venv .venv
+---
 
-# Activate Virtual Environment
-# Windows:
-.venv\Scripts\activate
+### Step 2: Blockchain Setup (Hardhat)
+```powershell
+cd blockchain
+npm install
+# Terminal A: Start local blockchain node
+npx hardhat node
+```
+
+In a second terminal, deploy the smart contract:
+```powershell
+cd blockchain
+npx hardhat run scripts/deploy.js --network localhost
+```
+
+---
+
+### Step 3: Backend Setup
+```powershell
+# In a new terminal (repository root)
+python -m venv backend_venv
+
+# Windows PowerShell:
+.\backend_venv\Scripts\Activate.ps1
 # Linux / macOS:
-source .venv/bin/activate
+# source backend_venv/bin/activate
 
-# Install dependencies
 pip install -r backend/requirements.txt
+cd backend
+uvicorn app.main:app --reload --port 8000
 ```
+Backend API will be live at `http://localhost:8000` with Swagger docs at `http://localhost:8000/docs`.
 
-### 2. Configure Environment Variables
+---
 
-Copy the `.env.example` template:
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-Edit `backend/.env`:
-
-```env
-# -----------------------------------------------------------------
-# Reverse Image Search Configuration
-# -----------------------------------------------------------------
-REVERSE_IMAGE_PROVIDER=serpapi
-REVERSE_IMAGE_API_KEY=your_serpapi_key_here
-
-# -----------------------------------------------------------------
-# Blockchain Configuration (Polygon Amoy Testnet default)
-# -----------------------------------------------------------------
-CHAIN_ID=80002
-CHAIN_NAME=Polygon Amoy Testnet
-BLOCKCHAIN_RPC_URL=https://rpc-amoy.polygon.technology/
-BLOCKCHAIN_EXPLORER_URL=https://amoy.polygonscan.com
-PRIVATE_KEY=your_testnet_private_key_here
-CONTRACT_ADDRESS=0x98Fc85d03C891C808E5F495493019808381D4bA5
-
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000
-```
-
-### 3. Deploy the Smart Contract (Optional / Testnet)
-
-To deploy your own instance of `FaceMatchRegistry.sol` to Polygon Amoy:
-
-```bash
-python contracts/deploy.py
-```
-
-Copy the generated contract address and paste it into `backend/.env` under `CONTRACT_ADDRESS`.
-
-### 4. Run Backend Server
-
-```bash
-uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload
-```
-
-The API docs are immediately accessible at `http://127.0.0.1:8000/docs`.
-
-### 5. Setup & Run Frontend
-
-In a separate terminal:
-
-```bash
+### Step 4: Frontend Setup
+```powershell
+# In a new terminal (repository root)
 cd frontend
 npm install
 npm run dev
 ```
-
 Open `http://localhost:5173` in your browser.
 
 ---
 
-## 🧪 Running Automated Tests
+## 13. Running Automated Tests
 
-FaceChain Verify includes automated tests for all components:
+### 1. Smart Contract Tests (Hardhat)
+```powershell
+cd blockchain
+npx hardhat test
+```
+*Output: 8 passing tests (registration, verification, duplicate rejection, event emission).*
+
+### 2. Backend & E2E Pipeline Tests (Pytest)
+```powershell
+# From repository root
+.\backend_venv\Scripts\python -m pytest backend/tests
+```
+*Output: 19 passing tests covering API endpoints, face detection, blank images, corrupt files, canonical JSON hashing, and blockchain verification.*
+
+### 3. Frontend Build & Typecheck
+```powershell
+cd frontend
+npm run build
+```
+*Output: Zero TypeScript errors; production build generated in `dist/`.*
+
+---
+
+## 14. Docker Deployment (Optional)
+To run the full stack with Docker Compose:
+```powershell
+docker-compose up --build
+```
+Services will be accessible at:
+- Frontend: `http://localhost:5173`
+- Backend API: `http://localhost:8000`
+- Blockchain Node: `http://localhost:8545`
+
+---
+
+## 15. Troubleshooting & FAQ
+
+| Issue | Root Cause | Solution |
+| :--- | :--- | :--- |
+| `No face detected` | Uploaded image contains no human face or lighting is too dark. | Upload a clear frontal portrait with adequate lighting. |
+| `Multiple faces detected` | Image contains several subjects. | For individual record verification, crop to single face. |
+| `Reverse-image search provider is not configured` | `REVERSE_SEARCH_API_KEY` is empty and demo fallback is disabled. | Provide an API key in `.env` or enable `ALLOW_DEMO_FALLBACK=true`. |
+| `Blockchain RPC connection failed` | Hardhat node is not running on port 8545. | Run `npx hardhat node` in `blockchain/`. |
+| `Verification Mismatch` | Discovered metadata or image hash was altered. | Re-verify with unaltered canonical JSON evidence. |
+
+---
+
+## 16. Git Push Commands
 
 ```bash
-pytest backend/tests -v
+git init
+git add .
+git commit -m "Build FaceChain Verify pipeline end-to-end"
+git branch -M main
+git remote add origin <USER_GITHUB_REPOSITORY_URL>
+git push -u origin main
 ```
 
-### Test Coverage:
-- `test_face_service.py`: Multi-scale face detection, bounding box extraction, safe embedding fingerprint calculation, blank image rejection, and corrupt file error handling.
-- `test_hashing.py`: Key insertion order invariance (RFC 8785 canonicalization), SHA-256 / bytes32 formatting, and tamper sensitivity.
-- `test_reverse_search.py`: Social media domain classification regex and provider normalization.
-- `test_blockchain.py`: Smart contract evidence registration, record querying, verified hash comparison, and tamper detection.
-- `test_api.py`: FastAPI health, system configuration status, and full pipeline endpoints.
-
 ---
 
-## 🎥 End-to-End Unedited Demonstration Workflow
-
-To demonstrate the full pipeline in an unedited screen recording:
-
-1. **Open Dashboard**: Start at `http://localhost:5173`. Show the connected status pill (`Polygon Amoy` / `Connected`).
-2. **Upload Photograph**: Drag and drop a portrait photo (or select one of the built-in benchmark portrait samples).
-3. **Face AI Detection**: Observe the interactive canvas drawing the cyan bounding box, landmarks, confidence percentage, and deterministic embedding fingerprint.
-4. **Click "Run Verification"**:
-   - Step 01: Image received and validated.
-   - Step 02: Face detected and encoded.
-   - Step 03: Reverse image search executes across genuine search providers.
-   - Step 04: Social media domain classification extracts the real post URL (e.g. Instagram / X / TikTok).
-   - Step 05: Canonical JSON generated and hashed to SHA-256 `bytes32`.
-   - Step 06: Smart contract transaction submitted on Polygon Amoy. Transaction hash and block height returned.
-   - Step 07: On-chain tamper verification executes and displays `✓ VERIFIED ON-CHAIN`.
-5. **Open Blockchain Explorer**: Click "View on Explorer" to open the live transaction on Polygonscan (`https://amoy.polygonscan.com/tx/0x...`).
-6. **Demonstrate Tamper Lab**:
-   - Navigate to the **Tamper Lab** tab.
-   - Click **⚡ Tamper URL** or alter a single character in the evidence payload.
-   - Click **Verify Evidence Hash**.
-   - Watch the system immediately alert: `✕ RECORD MISMATCH (TAMPERED) — Tampering Detected`.
-
----
-
-## ⚖️ Known Limitations & Ethical AI Disclosure
-
-1. **Visual Similarity ≠ Ownership**: Reverse-image search identifies indexed web matches based on visual similarity. It does **not** authenticate that the person depicted owns or controls the target social media account.
-2. **Probabilistic Face Embeddings**: Facial embeddings are probabilistic mathematical representations and should not be used as infallible proof of personal identity.
-3. **Zero Biometrics on Public Ledgers**: Public blockchains are permanent and public; raw biometric vectors and photos are **never stored on-chain**. Only cryptographic SHA-256 evidence hashes and verified metadata are recorded.
-4. **Third-Party Indexing Policies**: Social media platforms with private profiles or strict robots.txt directives may not return indexed results through search engines.
-5. **Transparency**: When search providers return no social media matches, the system transparently reports "No social match found" and will never fabricate fake results.
-
----
-
-## 📄 License
-
-This project is open-source software licensed under the [MIT License](LICENSE).
+## 17. License
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.

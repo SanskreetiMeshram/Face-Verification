@@ -5,20 +5,25 @@ __pycache__/
 *.so
 .pytest_cache/
 .coverage
+htmlcov/
 
-# Environments
+# Environments & Secrets
 .env
-.env.local
+.env.*
+!.env.example
 .venv
 env/
 venv/
 ENV/
 backend_venv/
+*.pem
+*.key
 
-# Node / Frontend
+# Node / Frontend / Hardhat
 node_modules/
 **/node_modules/
 **/cache/
+**/artifacts/
 dist/
 dist-ssr/
 *.local
@@ -28,9 +33,12 @@ yarn-error.log*
 
 # Uploads & Temp
 temp_uploads/
+backend/app/temp_uploads/
 app/temp_uploads/
 *.tmp
 *.log
+*.sqlite
+*.db
 
 # IDE & OS
 .vscode/

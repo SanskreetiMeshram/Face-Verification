@@ -1,6 +1,14 @@
 version: '3.8'
 
 services:
+  blockchain:
+    build:
+      context: ./blockchain
+      dockerfile: Dockerfile
+    ports:
+      - "8545:8545"
+    restart: unless-stopped
+
   backend:
     build:
       context: ./backend
@@ -8,15 +16,18 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - REVERSE_IMAGE_PROVIDER=${REVERSE_IMAGE_PROVIDER:-serpapi}
-      - REVERSE_IMAGE_API_KEY=${REVERSE_IMAGE_API_KEY:-}
-      - BLOCKCHAIN_RPC_URL=${BLOCKCHAIN_RPC_URL:-https://rpc-amoy.polygon.technology/}
-      - PRIVATE_KEY=${PRIVATE_KEY:-}
+      - REVERSE_SEARCH_PROVIDER=${REVERSE_SEARCH_PROVIDER:-serpapi}
+      - REVERSE_SEARCH_API_KEY=${REVERSE_SEARCH_API_KEY:-}
+      - BLOCKCHAIN_RPC_URL=${BLOCKCHAIN_RPC_URL:-http://blockchain:8545}
+      - BLOCKCHAIN_PRIVATE_KEY=${BLOCKCHAIN_PRIVATE_KEY:-}
       - CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
-      - CHAIN_ID=${CHAIN_ID:-80002}
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80
+      - CHAIN_ID=${CHAIN_ID:-31337}
+      - CHAIN_NAME=Local Hardhat Network
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80,*
     volumes:
       - ./backend:/app
+    depends_on:
+      - blockchain
     restart: unless-stopped
 
   frontend:

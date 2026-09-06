@@ -9,6 +9,14 @@ import socket
 import webbrowser
 import uvicorn
 
+# Reconfigure stdout/stderr for UTF-8 on Windows
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 def get_lan_ip():
     """Retrieve local network IP for mobile/Android sharing."""
     try:
@@ -25,15 +33,15 @@ def main():
     port = 8000
 
     print("=" * 65)
-    print("      🚀 FACECHAIN VERIFY — APPLICATION SERVER LAUNCHED")
+    print("      [+] FACECHAIN VERIFY -- APPLICATION SERVER LAUNCHED")
     print("=" * 65)
-    print(f"\n  [✓] Local Machine URL:      http://localhost:{port}")
-    print(f"  [✓] Mobile / Android URL:   http://{lan_ip}:{port}")
-    print(f"  [✓] Backend API Docs:       http://localhost:{port}/docs")
-    print(f"  [✓] SQLite Database:        Initialized (backend/app/facechain.db)")
-    print(f"  [✓] Progressive Web App:    Active (Installable on Android/iOS/PC)")
+    print(f"\n  [*] Local Machine URL:      http://localhost:{port}")
+    print(f"  [*] Mobile / Android URL:   http://{lan_ip}:{port}")
+    print(f"  [*] Backend API Docs:       http://localhost:{port}/docs")
+    print(f"  [*] SQLite Database:        Initialized (backend/app/facechain.db)")
+    print(f"  [*] Progressive Web App:    Active (Installable on Android/iOS/PC)")
     print("\n" + "-" * 65)
-    print(f"  📲 TO OPEN ON YOUR ANDROID PHONE / FRIEND'S LAPTOP:")
+    print(f"  -> TO OPEN ON YOUR ANDROID PHONE / FRIEND'S LAPTOP:")
     print(f"     1. Connect your phone to the same Wi-Fi network.")
     print(f"     2. Open Chrome/Browser on your phone and go to:")
     print(f"        👉  http://{lan_ip}:{port}")
