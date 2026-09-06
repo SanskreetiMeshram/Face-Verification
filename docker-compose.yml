@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REVERSE_IMAGE_PROVIDER=${REVERSE_IMAGE_PROVIDER:-serpapi}
+      - REVERSE_IMAGE_API_KEY=${REVERSE_IMAGE_API_KEY:-}
+      - BLOCKCHAIN_RPC_URL=${BLOCKCHAIN_RPC_URL:-https://rpc-amoy.polygon.technology/}
+      - PRIVATE_KEY=${PRIVATE_KEY:-}
+      - CONTRACT_ADDRESS=${CONTRACT_ADDRESS:-}
+      - CHAIN_ID=${CHAIN_ID:-80002}
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
