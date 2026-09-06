@@ -6,9 +6,9 @@ import { ReverseSearchCard } from '../components/ReverseSearchCard';
 import { BlockchainCard } from '../components/BlockchainCard';
 import { VerificationBadge } from '../components/VerificationBadge';
 import { TechnicalDetails } from '../components/TechnicalDetails';
-import { PipelineRunResponse, SystemStatusResponse } from '../types';
-import { runPipeline } from '../services/api';
-import { ShieldCheck, Sparkles, ArrowRight, AlertOctagon } from 'lucide-react';
+import { PipelineRunResponse, SystemStatusResponse, SearchResultItem, CanonicalEvidence } from '../types';
+import { runPipeline, registerBlockchain, verifyEvidence } from '../services/api';
+import { ShieldCheck, Sparkles, ArrowRight, AlertOctagon, Lock, CheckCircle2 } from 'lucide-react';
 
 interface DashboardProps {
   status: SystemStatusResponse | null;
@@ -21,12 +21,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ status, onNavigateToTamper
   const [isLoading, setIsLoading] = useState(false);
   const [pipelineData, setPipelineData] = useState<PipelineRunResponse | null>(null);
   const [errorDetails, setErrorDetails] = useState<string | null>(null);
+  const [isRegisteringSelected, setIsRegisteringSelected] = useState(false);
+  const [registerSuccessMessage, setRegisterSuccessMessage] = useState<string | null>(null);
 
   const handleImageSelected = (file: File, url: string) => {
     setSelectedFile(file);
     setPreviewUrl(url);
     setPipelineData(null);
     setErrorDetails(null);
+    setRegisterSuccessMessage(null);
   };
 
   const handleReset = () => {
@@ -34,6 +37,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ status, onNavigateToTamper
     setPreviewUrl(null);
     setPipelineData(null);
     setErrorDetails(null);
+    setRegisterSuccessMessage(null);
   };
 
   const handleRunPipeline = async () => {
@@ -42,6 +46,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ status, onNavigateToTamper
     try {
       setIsLoading(true);
       setErrorDetails(null);
+      setRegisterSuccessMessage(null);
       const res = await runPipeline(selectedFile);
       setPipelineData(res);
       if (!res.success && res.error_details) {
@@ -54,6 +59,47 @@ export const Dashboard: React.FC<DashboardProps> = ({ status, onNavigateToTamper
     }
   };
 
+  const handleRegisterSelectedResult = async (item: SearchResultItem) => {
+    if (!pipelineData?.face_analysis) return;
+    try {
+      setIsRegisteringSelected(true);
+      setErrorDetails(null);
+      setRegisterSuccessMessage(null);
+
+      const nowIso = new Date().toISOString();
+      const evidence: CanonicalEvidence = {
+        source_image_sha256: pipelineData.face_analysis.source_image_sha256,
+        reverse_search_provider: pipelineData.reverse_search?.provider || 'Reverse Search',
+        matched_url: item.url,
+        platform: item.platform || 'Web Discovery',
+        search_timestamp: nowIso,
+        match_metadata: {
+          title: item.title,
+          domain: item.domain,
+          url: item.url,
+          platform: item.platform,
+          discoveredAt: nowIso,
+          similarity: item.similarity
+        }
+      };
+
+      const regRes = await registerBlockchain(evidence);
+      const verRes = await verifyEvidence(regRes.record_id, evidence);
+
+      setPipelineData(prev => prev ? {
+        ...prev,
+        blockchain_record: regRes,
+        verification: verRes
+      } : null);
+
+      setRegisterSuccessMessage(`Record #${regRes.record_id} registered and verified successfully on-chain!`);
+    } catch (err: any) {
+      setErrorDetails(`Failed to register selected result on-chain: ${err.message}`);
+    } finally {
+      setIsRegisteringSelected(false);
+    }
+  };
+
   return (
     <div className="space-y-8 pb-16">
       
@@ -61,14 +107,20 @@ export const Dashboard: React.FC<DashboardProps> = ({ status, onNavigateToTamper
       <div className="text-center space-y-3 pt-4">
         <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-xs font-semibold mb-1 shadow-sm">
           <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Next-Gen Biometric Evidence Protocol</span>
+          <span>Authorized Image → Web Discovery → Blockchain Verification</span>
         </div>
         <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white">
-          FaceChain Verify
+          Verify. Discover. Prove.
         </h1>
         <p className="text-base sm:text-lg text-slate-400 max-w-2xl mx-auto font-medium">
-          Detect a face. Find the image. Verify the evidence on-chain.
+          Trace authorized image content to public web sources and create a tamper-evident blockchain record.
         </p>
+
+        {/* Privacy badge */}
+        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-400 text-xs mt-2">
+          <Lock className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span>Process only images you are authorized to use. No raw biometrics are stored on-chain.</span>
+        </div>
       </div>
 
       {/* Main Upload Zone */}
@@ -89,12 +141,23 @@ export const Dashboard: React.FC<DashboardProps> = ({ status, onNavigateToTamper
         />
       )}
 
+      {/* Success notification banner if any */}
+      {registerSuccessMessage && (
+        <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 text-xs flex items-center space-x-3 shadow-lg shadow-emerald-950/20">
+          <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
+          <div>
+            <strong className="font-bold block text-sm">Blockchain Confirmation:</strong>
+            <span>{registerSuccessMessage}</span>
+          </div>
+        </div>
+      )}
+
       {/* Error notification banner if any */}
       {errorDetails && (
         <div className="p-4 rounded-2xl bg-rose-950/40 border border-rose-500/40 text-rose-300 text-xs flex items-center space-x-3 shadow-lg shadow-rose-950/20">
           <AlertOctagon className="w-5 h-5 shrink-0 text-rose-400" />
           <div>
-            <strong className="font-bold block text-sm">Pipeline Execution Notice:</strong>
+            <strong className="font-bold block text-sm">Pipeline Notice:</strong>
             <span>{errorDetails}</span>
           </div>
         </div>
@@ -118,6 +181,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ status, onNavigateToTamper
             {/* Right: Reverse Search Card */}
             <ReverseSearchCard
               searchData={pipelineData?.reverse_search || null}
+              onRegisterOnChain={handleRegisterSelectedResult}
+              isRegistering={isRegisteringSelected}
             />
           </div>
 
