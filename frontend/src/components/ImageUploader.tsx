@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, Image as ImageIcon, Sparkles, AlertCircle, RefreshCw, Camera } from 'lucide-react';
+import { CameraCaptureModal } from './CameraCaptureModal';
 
 interface ImageUploaderProps {
   onImageSelected: (file: File, previewUrl: string) => void;
@@ -130,6 +131,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [loadingSample, setLoadingSample] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFile = (file: File) => {
@@ -179,7 +181,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
       setLoadingSample(sample.name);
       setErrorMessage(null);
       
-      // Try loading external high-res photo, or seamlessly fall back to embedded synthetic face
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 2500);
@@ -196,7 +197,6 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
         // Fallback to local instant generator
       }
 
-      // Generate local fallback
       const fallbackDataUrl = generateSyntheticFaceDataUrl(sample.variant);
       const file = await dataUrlToFile(fallbackDataUrl, `${sample.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}.jpg`);
       onImageSelected(file, fallbackDataUrl);
@@ -212,7 +212,7 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
       {/* Background glow decoration */}
       <div className="absolute top-0 right-0 w-80 h-80 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
 
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="text-lg font-bold text-white flex items-center space-x-2">
             <UploadCloud className="w-5 h-5 text-cyan-400" />
@@ -223,16 +223,26 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           </p>
         </div>
 
-        {previewUrl && (
+        <div className="flex items-center space-x-2">
           <button
-            onClick={onReset}
-            disabled={isLoading}
-            className="text-xs text-slate-400 hover:text-white flex items-center space-x-1.5 bg-slate-800/60 hover:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 transition"
+            onClick={() => setIsCameraOpen(true)}
+            className="text-xs font-semibold text-cyan-300 hover:text-white flex items-center space-x-1.5 bg-cyan-950/40 hover:bg-cyan-900/60 px-3.5 py-1.5 rounded-xl border border-cyan-500/30 transition shadow-sm"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Reset</span>
+            <Camera className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Snap Camera</span>
           </button>
-        )}
+
+          {previewUrl && (
+            <button
+              onClick={onReset}
+              disabled={isLoading}
+              className="text-xs text-slate-400 hover:text-white flex items-center space-x-1.5 bg-slate-800/60 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 transition"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Reset</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {errorMessage && (
@@ -352,6 +362,16 @@ export const ImageUploader: React.FC<ImageUploaderProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Camera Capture Modal */}
+      <CameraCaptureModal
+        isOpen={isCameraOpen}
+        onClose={() => setIsCameraOpen(false)}
+        onCapture={(file, dataUrl) => {
+          onImageSelected(file, dataUrl);
+          setIsCameraOpen(false);
+        }}
+      />
     </div>
   );
 };

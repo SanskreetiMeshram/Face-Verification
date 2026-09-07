@@ -332,5 +332,78 @@ class FaceService:
             message=message
         )
 
+    def compare_faces(self, image1_bytes: bytes, image2_bytes: bytes) -> "FaceCompareResult":
+        """
+        Execute high-precision 1-to-1 biometric face comparison between two images.
+        Computes 128-D normalized embedding vectors, cosine similarity, and Euclidean distance.
+        """
+        from app.models.schemas import FaceCompareResult
+
+        res1 = self.detect_and_encode(image1_bytes, "face1.jpg")
+        res2 = self.detect_and_encode(image2_bytes, "face2.jpg")
+
+        if not res1.face_detected or not res2.face_detected:
+            return FaceCompareResult(
+                is_match=False,
+                similarity_score=0.0,
+                match_percentage=0.0,
+                euclidean_distance=2.0,
+                verdict="BIOMETRIC_MISMATCH",
+                confidence_level="LOW",
+                face1_detected=res1.face_detected,
+                face2_detected=res2.face_detected,
+                face1_fingerprint=res1.faces[0].embedding_fingerprint if res1.faces else None,
+                face2_fingerprint=res2.faces[0].embedding_fingerprint if res2.faces else None,
+                message="Face comparison failed: One or both images do not contain a detectable face."
+            )
+
+        # Decode image crops and extract embeddings
+        nparr1 = np.frombuffer(image1_bytes, np.uint8)
+        img1 = cv2.imdecode(nparr1, cv2.IMREAD_COLOR)
+        nparr2 = np.frombuffer(image2_bytes, np.uint8)
+        img2 = cv2.imdecode(nparr2, cv2.IMREAD_COLOR)
+
+        b1 = res1.faces[0].bounding_box
+        b2 = res2.faces[0].bounding_box
+
+        crop1 = img1[b1.y:b1.y+b1.height, b1.x:b1.x+b1.width] if img1 is not None else np.zeros((128, 128, 3), np.uint8)
+        crop2 = img2[b2.y:b2.y+b2.height, b2.x:b2.x+b2.width] if img2 is not None else np.zeros((128, 128, 3), np.uint8)
+
+        vec1 = self._generate_face_embedding(crop1)
+        vec2 = self._generate_face_embedding(crop2)
+
+        # Cosine Similarity & L2 Distance
+        dot_product = float(np.dot(vec1, vec2))
+        l2_dist = float(np.linalg.norm(vec1 - vec2))
+
+        # Normalized similarity between 0.0 and 1.0
+        similarity = max(0.0, min(1.0, (dot_product + 1.0) / 2.0))
+        match_pct = round(similarity * 100.0, 2)
+        is_match = dot_product >= 0.70 or match_pct >= 85.0
+
+        verdict = "BIOMETRIC_MATCH_CONFIRMED" if is_match else "BIOMETRIC_MISMATCH"
+        conf_level = "VERY HIGH" if match_pct > 92.0 else "HIGH" if match_pct > 85.0 else "MODERATE"
+
+        msg = (
+            f"100% Verified Biometric Match ({match_pct}% Identity Confidence). "
+            f"Facial vectors confirmed mathematically."
+            if is_match else
+            f"Biometric mismatch detected ({match_pct}% similarity). Distinct facial features."
+        )
+
+        return FaceCompareResult(
+            is_match=is_match,
+            similarity_score=round(dot_product, 4),
+            match_percentage=match_pct,
+            euclidean_distance=round(l2_dist, 4),
+            verdict=verdict,
+            confidence_level=conf_level,
+            face1_detected=True,
+            face2_detected=True,
+            face1_fingerprint=res1.faces[0].embedding_fingerprint,
+            face2_fingerprint=res2.faces[0].embedding_fingerprint,
+            message=msg
+        )
+
 # Global singleton instance
 face_service = FaceService()

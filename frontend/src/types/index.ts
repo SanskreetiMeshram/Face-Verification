@@ -31,6 +31,20 @@ export interface FaceDetectionResult {
   message: string;
 }
 
+export interface FaceCompareResult {
+  is_match: boolean;
+  similarity_score: number;
+  match_percentage: number;
+  euclidean_distance: number;
+  verdict: string;
+  confidence_level: string;
+  face1_detected: boolean;
+  face2_detected: boolean;
+  face1_fingerprint?: string;
+  face2_fingerprint?: string;
+  message: string;
+}
+
 export interface SearchResultItem {
   title: string;
   url: string;

@@ -1,19 +1,19 @@
 import React from 'react';
-import { Home, History, ShieldAlert, Users, Settings } from 'lucide-react';
+import { Home, UserCheck, History, ShieldAlert, Users, Settings } from 'lucide-react';
 
 interface MobileNavProps {
-  activeTab: 'dashboard' | 'history' | 'tamper' | 'settings' | 'creator';
-  setActiveTab: (tab: 'dashboard' | 'history' | 'tamper' | 'settings' | 'creator') => void;
+  activeTab: 'dashboard' | 'compare' | 'history' | 'tamper' | 'settings' | 'creator';
+  setActiveTab: (tab: 'dashboard' | 'compare' | 'history' | 'tamper' | 'settings' | 'creator') => void;
 }
 
 export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, setActiveTab }) => {
   return (
-    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#070B14]/95 backdrop-blur-xl border-t border-slate-800/80 px-2 py-2 safe-area-pb">
-      <div className="grid grid-cols-5 gap-1 max-w-md mx-auto text-[10px] font-semibold text-center">
+    <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#070B14]/95 backdrop-blur-xl border-t border-slate-800/80 px-1 py-2 safe-area-pb">
+      <div className="grid grid-cols-6 gap-0.5 max-w-lg mx-auto text-[9px] font-semibold text-center">
         
         <button
           onClick={() => setActiveTab('dashboard')}
-          className={`flex flex-col items-center py-1.5 rounded-xl transition ${
+          className={`flex flex-col items-center py-1 rounded-xl transition ${
             activeTab === 'dashboard' ? 'text-cyan-400 bg-cyan-500/10' : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -22,8 +22,18 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, setActiveTab })
         </button>
 
         <button
+          onClick={() => setActiveTab('compare')}
+          className={`flex flex-col items-center py-1 rounded-xl transition ${
+            activeTab === 'compare' ? 'text-indigo-400 bg-indigo-500/10' : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <UserCheck className="w-4 h-4 mb-0.5" />
+          <span>1:1 Verify</span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('history')}
-          className={`flex flex-col items-center py-1.5 rounded-xl transition ${
+          className={`flex flex-col items-center py-1 rounded-xl transition ${
             activeTab === 'history' ? 'text-cyan-400 bg-cyan-500/10' : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -33,7 +43,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, setActiveTab })
 
         <button
           onClick={() => setActiveTab('tamper')}
-          className={`flex flex-col items-center py-1.5 rounded-xl transition ${
+          className={`flex flex-col items-center py-1 rounded-xl transition ${
             activeTab === 'tamper' ? 'text-purple-400 bg-purple-500/10' : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -43,7 +53,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, setActiveTab })
 
         <button
           onClick={() => setActiveTab('creator')}
-          className={`flex flex-col items-center py-1.5 rounded-xl transition ${
+          className={`flex flex-col items-center py-1 rounded-xl transition ${
             activeTab === 'creator' ? 'text-pink-400 bg-pink-500/10' : 'text-slate-400 hover:text-white'
           }`}
         >
@@ -53,7 +63,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, setActiveTab })
 
         <button
           onClick={() => setActiveTab('settings')}
-          className={`flex flex-col items-center py-1.5 rounded-xl transition ${
+          className={`flex flex-col items-center py-1 rounded-xl transition ${
             activeTab === 'settings' ? 'text-cyan-400 bg-cyan-500/10' : 'text-slate-400 hover:text-white'
           }`}
         >

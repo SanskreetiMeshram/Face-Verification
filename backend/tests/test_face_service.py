@@ -55,3 +55,13 @@ def test_invalid_image_bytes():
     corrupt_bytes = b"NOT_A_VALID_IMAGE_FILE_DATA_12345"
     with pytest.raises(ValueError, match="Failed to decode image"):
         face_service.detect_and_encode(corrupt_bytes, "corrupt.jpg")
+
+def test_compare_faces_identical():
+    """Verify 1-to-1 biometric comparison of identical images returns 100% match."""
+    img_bytes = create_synthetic_face_image()
+    res = face_service.compare_faces(img_bytes, img_bytes)
+    assert res.is_match is True
+    assert res.similarity_score >= 0.99
+    assert res.match_percentage >= 99.0
+    assert res.verdict == "BIOMETRIC_MATCH_CONFIRMED"
+

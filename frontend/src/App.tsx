@@ -3,6 +3,7 @@ import { Header } from './components/Header';
 import { MobileNav } from './components/MobileNav';
 import { Dashboard } from './pages/Dashboard';
 import { HistoryPage } from './pages/HistoryPage';
+import { ComparePage } from './pages/ComparePage';
 import { TamperTester } from './components/TamperTester';
 import { CreatorDashboard } from './pages/CreatorDashboard';
 import { SettingsPage } from './pages/SettingsPage';
@@ -12,7 +13,7 @@ import { getSystemStatus } from './services/api';
 import { ShieldCheck, ExternalLink } from 'lucide-react';
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'history' | 'tamper' | 'settings' | 'creator'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'compare' | 'history' | 'tamper' | 'settings' | 'creator'>('dashboard');
   const [status, setStatus] = useState<SystemStatusResponse | null>(null);
   const [isLimitationsOpen, setIsLimitationsOpen] = useState(false);
   
@@ -56,6 +57,10 @@ export function App() {
             status={status}
             onNavigateToTamper={handleNavigateToTamper}
           />
+        )}
+
+        {activeTab === 'compare' && (
+          <ComparePage />
         )}
 
         {activeTab === 'history' && (

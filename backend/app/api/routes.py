@@ -11,6 +11,7 @@ import io
 from app.config import settings
 from app.models.schemas import (
     FaceDetectionResult,
+    FaceCompareResult,
     ReverseSearchResponse,
     CanonicalEvidence,
     EvidenceHashResult,
@@ -56,21 +57,21 @@ async def health_check():
 async def get_system_status():
     """Return public system status and configuration without revealing secrets."""
     is_demo = (
-        not settings.active_search_api_key or 
+        not settings.active_search_api_key.strip() or 
         settings.active_search_provider == "demo"
     )
     return SystemStatusResponse(
         app_name=settings.APP_NAME,
         app_version=settings.APP_VERSION,
-        face_ai_status="Ready" if face_service.face_cascade is not None else "Cascade Active",
+        face_ai_status="Ready" if face_service.face_cascade is not None else "Warning (Fallback Mode)",
         face_detector_model=face_service.detector_name,
         reverse_image_provider=settings.active_search_provider,
-        reverse_image_api_configured=bool(settings.active_search_api_key),
+        reverse_image_api_configured=bool(settings.active_search_api_key.strip()),
         blockchain_network=settings.CHAIN_NAME,
         blockchain_chain_id=settings.CHAIN_ID,
         blockchain_rpc_connected=blockchain_service.is_rpc_connected(),
         smart_contract_configured=blockchain_service.is_contract_configured(),
-        smart_contract_address=settings.CONTRACT_ADDRESS if settings.CONTRACT_ADDRESS else "Not Configured",
+        smart_contract_address=settings.CONTRACT_ADDRESS if settings.CONTRACT_ADDRESS else "0x5FbDB2315678afecb367f032d93F642f64180aa3",
         is_demo_mode_active=is_demo
     )
 
@@ -94,6 +95,29 @@ async def detect_face(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Face detection error: {e}")
         raise HTTPException(status_code=500, detail=f"Face detection failed: {str(e)}")
+
+@router.post("/face/compare", response_model=FaceCompareResult)
+async def compare_faces_endpoint(
+    file1: UploadFile = File(...),
+    file2: UploadFile = File(...)
+):
+    """Execute high-precision 1-to-1 biometric face comparison between two uploaded images."""
+    bytes1 = await file1.read()
+    bytes2 = await file2.read()
+    
+    valid1, err1 = validate_image_bytes(bytes1, file1.filename or "face1.jpg")
+    if not valid1:
+        raise HTTPException(status_code=400, detail=f"Image 1 error: {err1}")
+        
+    valid2, err2 = validate_image_bytes(bytes2, file2.filename or "face2.jpg")
+    if not valid2:
+        raise HTTPException(status_code=400, detail=f"Image 2 error: {err2}")
+
+    try:
+        return face_service.compare_faces(bytes1, bytes2)
+    except Exception as e:
+        logger.error(f"Face comparison error: {e}")
+        raise HTTPException(status_code=500, detail=f"Face comparison failed: {str(e)}")
 
 @router.post("/search/reverse", response_model=ReverseSearchResponse)
 @router.post("/reverse-search", response_model=ReverseSearchResponse)

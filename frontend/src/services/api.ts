@@ -1,6 +1,7 @@
 import {
   PipelineRunResponse,
   FaceDetectionResult,
+  FaceCompareResult,
   ReverseSearchResponse,
   CanonicalEvidence,
   BlockchainRegisterResponse,
@@ -40,6 +41,24 @@ export async function detectFace(file: File): Promise<FaceDetectionResult> {
   if (!response.ok) {
     const err = await response.json().catch(() => ({ detail: 'Face detection failed' }));
     throw new Error(err.detail || 'Face detection failed');
+  }
+
+  return response.json();
+}
+
+export async function compareFaces(file1: File, file2: File): Promise<FaceCompareResult> {
+  const formData = new FormData();
+  formData.append('file1', file1);
+  formData.append('file2', file2);
+
+  const response = await fetch(`${API_BASE}/face/compare`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ detail: 'Face comparison failed' }));
+    throw new Error(err.detail || 'Face comparison failed');
   }
 
   return response.json();

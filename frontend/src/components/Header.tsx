@@ -4,8 +4,8 @@ import { SystemStatusResponse } from '../types';
 
 interface HeaderProps {
   status: SystemStatusResponse | null;
-  activeTab: 'dashboard' | 'history' | 'tamper' | 'settings' | 'creator';
-  setActiveTab: (tab: 'dashboard' | 'history' | 'tamper' | 'settings' | 'creator') => void;
+  activeTab: 'dashboard' | 'compare' | 'history' | 'tamper' | 'settings' | 'creator';
+  setActiveTab: (tab: 'dashboard' | 'compare' | 'history' | 'tamper' | 'settings' | 'creator') => void;
   onOpenLimitations: () => void;
 }
 
@@ -88,6 +88,16 @@ export const Header: React.FC<HeaderProps> = ({
               }`}
             >
               Pipeline Dashboard
+            </button>
+            <button
+              onClick={() => setActiveTab('compare')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === 'compare'
+                  ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-md shadow-indigo-500/20'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              }`}
+            >
+              1:1 Face Verify
             </button>
             <button
               onClick={() => setActiveTab('history')}

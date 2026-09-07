@@ -37,6 +37,19 @@ class FaceDetectionResult(BaseModel):
     detector_model: str = "OpenCV Neural & Multi-Cascade Engine"
     message: str
 
+class FaceCompareResult(BaseModel):
+    is_match: bool
+    similarity_score: float = Field(..., description="Cosine similarity score between -1.0 and 1.0")
+    match_percentage: float = Field(..., description="Percentage match between 0.0% and 100.0%")
+    euclidean_distance: float = Field(..., description="L2 Euclidean distance between embedding vectors")
+    verdict: str = Field(..., description="'BIOMETRIC_MATCH_CONFIRMED' or 'BIOMETRIC_MISMATCH'")
+    confidence_level: str = Field(default="HIGH", description="Confidence level of biometric evaluation")
+    face1_detected: bool
+    face2_detected: bool
+    face1_fingerprint: Optional[str] = None
+    face2_fingerprint: Optional[str] = None
+    message: str
+
 # -----------------------------------------------------------------------------
 # Reverse Image Search & Discovered Content Schemas
 # -----------------------------------------------------------------------------
