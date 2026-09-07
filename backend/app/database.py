@@ -1,238 +1,156 @@
-import sqlite3
-import json
 import os
+import sqlite3
 import logging
-from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional
+from datetime import datetime, timezone
 
-logger = logging.getLogger("facechain.database")
+logger = logging.getLogger("prooflink.database")
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "facechain.db")
+DB_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(DB_DIR, "prooflink.db")
 
-def get_db_connection():
-    """Create and return a thread-safe connection to the SQLite database."""
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+def get_connection() -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
-    """Initialize database tables for persistent records and creator activity logs."""
-    conn = get_db_connection()
+    """Initialize SQLite database tables for ProofLink audit trails."""
+    conn = get_connection()
     cursor = conn.cursor()
 
-    # Table 1: Blockchain Records (Persistent)
+    # Table for full verification audit records (only non-biometric metadata & hashes)
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS blockchain_records (
+        CREATE TABLE IF NOT EXISTS verification_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            record_id INTEGER UNIQUE,
-            evidence_hash TEXT NOT NULL,
-            result_url TEXT NOT NULL,
+            verification_id TEXT UNIQUE NOT NULL,
+            record_hash TEXT NOT NULL,
+            selfie_sha256 TEXT NOT NULL,
+            profile_sha256 TEXT NOT NULL,
+            metadata_sha256 TEXT NOT NULL,
+            input_url TEXT NOT NULL,
+            resolved_url TEXT NOT NULL,
             platform TEXT NOT NULL,
-            timestamp INTEGER NOT NULL,
-            timestamp_iso TEXT NOT NULL,
-            submitter TEXT NOT NULL,
+            confidence_score REAL NOT NULL,
+            euclidean_distance REAL NOT NULL,
+            cosine_similarity REAL NOT NULL,
+            is_match INTEGER NOT NULL,
+            notarized INTEGER NOT NULL,
             transaction_hash TEXT,
             block_number INTEGER,
-            explorer_tx_url TEXT,
-            explorer_contract_url TEXT,
-            chain_name TEXT NOT NULL,
-            chain_id INTEGER NOT NULL,
-            evidence_json TEXT NOT NULL,
-            is_simulated INTEGER DEFAULT 0,
-            created_at TEXT NOT NULL
+            submitter TEXT,
+            canonical_metadata TEXT NOT NULL,
+            explorer_url TEXT,
+            timestamp TEXT NOT NULL
         )
     """)
 
-    # Table 2: Creator Master Activity Logs (Every upload, detection, search, verification)
+    # Table for independent re-verification check logs
     cursor.execute("""
-        CREATE TABLE IF NOT EXISTS activity_logs (
+        CREATE TABLE IF NOT EXISTS reverification_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            event_type TEXT NOT NULL,
-            client_ip TEXT,
-            user_agent TEXT,
-            device_type TEXT,
-            source_image_sha256 TEXT,
-            face_count INTEGER DEFAULT 0,
-            platform TEXT,
-            matched_url TEXT,
-            evidence_hash TEXT,
-            blockchain_tx TEXT,
-            record_id INTEGER,
-            status TEXT NOT NULL,
-            message TEXT,
-            details_json TEXT,
-            created_at TEXT NOT NULL
+            record_hash TEXT NOT NULL,
+            on_chain_exists INTEGER NOT NULL,
+            tamper_detected INTEGER NOT NULL,
+            submitter TEXT,
+            checked_at TEXT NOT NULL
         )
     """)
 
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_record_hash ON verification_records(record_hash)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tx_hash ON verification_records(transaction_hash)")
+
     conn.commit()
     conn.close()
-    logger.info(f"SQLite database initialized at {DB_PATH}")
+    logger.info("ProofLink SQLite database initialized.")
 
-def save_blockchain_record(record_data: Dict[str, Any], evidence_dict: Dict[str, Any]) -> int:
-    """Save or update an immutable blockchain record in the persistent database."""
-    conn = get_db_connection()
+def save_record(rec: Dict[str, Any]) -> int:
+    """Insert a new verification record into the database."""
+    conn = get_connection()
     cursor = conn.cursor()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        cursor.execute("""
+            INSERT OR REPLACE INTO verification_records (
+                verification_id, record_hash, selfie_sha256, profile_sha256, metadata_sha256,
+                input_url, resolved_url, platform, confidence_score, euclidean_distance,
+                cosine_similarity, is_match, notarized, transaction_hash, block_number,
+                submitter, canonical_metadata, explorer_url, timestamp
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            rec.get("verification_id"),
+            rec.get("record_hash"),
+            rec.get("selfie_sha256"),
+            rec.get("profile_sha256"),
+            rec.get("metadata_sha256"),
+            rec.get("input_url"),
+            rec.get("resolved_url"),
+            rec.get("platform"),
+            rec.get("confidence_score"),
+            rec.get("euclidean_distance"),
+            rec.get("cosine_similarity"),
+            1 if rec.get("is_match") else 0,
+            1 if rec.get("notarized") else 0,
+            rec.get("transaction_hash"),
+            rec.get("block_number"),
+            rec.get("submitter"),
+            rec.get("canonical_metadata"),
+            rec.get("explorer_url"),
+            rec.get("timestamp") or datetime.now(timezone.utc).isoformat()
+        ))
+        conn.commit()
+        record_id = cursor.lastrowid
+        return record_id
+    finally:
+        conn.close()
 
-    cursor.execute("""
-        INSERT OR REPLACE INTO blockchain_records (
-            record_id, evidence_hash, result_url, platform, timestamp, timestamp_iso,
-            submitter, transaction_hash, block_number, explorer_tx_url, explorer_contract_url,
-            chain_name, chain_id, evidence_json, is_simulated, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        record_data.get("record_id"),
-        record_data.get("evidence_hash"),
-        record_data.get("result_url") or record_data.get("matched_url"),
-        record_data.get("platform"),
-        record_data.get("timestamp", int(datetime.now(timezone.utc).timestamp())),
-        record_data.get("timestamp_iso", now_iso),
-        record_data.get("submitter"),
-        record_data.get("transaction_hash"),
-        record_data.get("block_number"),
-        record_data.get("explorer_tx_url"),
-        record_data.get("explorer_contract_url"),
-        record_data.get("chain_name", "Polygon Amoy Testnet"),
-        record_data.get("chain_id", 80002),
-        json.dumps(evidence_dict),
-        1 if record_data.get("is_simulated") else 0,
-        now_iso
-    ))
-    conn.commit()
-    inserted_id = cursor.lastrowid
-    conn.close()
-    return inserted_id
-
-def get_all_blockchain_records() -> List[Dict[str, Any]]:
-    """Fetch all saved blockchain records ordered by newest first."""
-    conn = get_db_connection()
+def get_records(limit: int = 50) -> List[Dict[str, Any]]:
+    """Fetch latest verification records."""
+    conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM blockchain_records ORDER BY id DESC")
-    rows = cursor.fetchall()
-    results = []
-    for r in rows:
-        item = dict(r)
-        try:
-            item["evidence"] = json.loads(item["evidence_json"])
-        except Exception:
-            item["evidence"] = {}
-        item["is_simulated"] = bool(item["is_simulated"])
-        results.append(item)
-    conn.close()
-    return results
+    try:
+        cursor.execute("""
+            SELECT * FROM verification_records 
+            ORDER BY id DESC LIMIT ?
+        """, (limit,))
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
 
-def get_blockchain_record_by_id(record_id: int) -> Optional[Dict[str, Any]]:
-    """Fetch a specific blockchain record by record_id."""
-    conn = get_db_connection()
+def get_record_by_hash(record_hash: str) -> Optional[Dict[str, Any]]:
+    """Retrieve record by its record_hash or transaction_hash."""
+    clean_hash = record_hash.strip().lower()
+    conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM blockchain_records WHERE record_id = ?", (record_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        item = dict(row)
-        try:
-            item["evidence"] = json.loads(item["evidence_json"])
-        except Exception:
-            item["evidence"] = {}
-        item["is_simulated"] = bool(item["is_simulated"])
-        return item
-    return None
+    try:
+        cursor.execute("""
+            SELECT * FROM verification_records 
+            WHERE lower(record_hash) = ? OR lower(transaction_hash) = ? OR verification_id = ?
+            LIMIT 1
+        """, (clean_hash, clean_hash, record_hash.strip()))
+        row = cursor.fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
 
-def log_creator_activity(
-    event_type: str,
-    status: str,
-    client_ip: Optional[str] = None,
-    user_agent: Optional[str] = None,
-    source_image_sha256: Optional[str] = None,
-    face_count: int = 0,
-    platform: Optional[str] = None,
-    matched_url: Optional[str] = None,
-    evidence_hash: Optional[str] = None,
-    blockchain_tx: Optional[str] = None,
-    record_id: Optional[int] = None,
-    message: Optional[str] = None,
-    details: Optional[Dict[str, Any]] = None
-) -> int:
-    """Log an activity event for the creator's real-time audit trail."""
-    conn = get_db_connection()
+def log_reverification(record_hash: str, on_chain_exists: bool, tamper_detected: bool, submitter: Optional[str]):
+    """Record an independent re-verification query."""
+    conn = get_connection()
     cursor = conn.cursor()
-    now_iso = datetime.now(timezone.utc).isoformat()
+    try:
+        cursor.execute("""
+            INSERT INTO reverification_logs (
+                record_hash, on_chain_exists, tamper_detected, submitter, checked_at
+            ) VALUES (?, ?, ?, ?, ?)
+        """, (
+            record_hash,
+            1 if on_chain_exists else 0,
+            1 if tamper_detected else 0,
+            submitter,
+            datetime.now(timezone.utc).isoformat()
+        ))
+        conn.commit()
+    finally:
+        conn.close()
 
-    # Determine device type from user_agent
-    device_type = "Desktop"
-    if user_agent:
-        ua = user_agent.lower()
-        if "mobile" in ua or "android" in ua or "iphone" in ua:
-            device_type = "Mobile (Android/iOS)"
-        elif "tablet" in ua or "ipad" in ua:
-            device_type = "Tablet"
-
-    cursor.execute("""
-        INSERT INTO activity_logs (
-            event_type, client_ip, user_agent, device_type, source_image_sha256,
-            face_count, platform, matched_url, evidence_hash, blockchain_tx,
-            record_id, status, message, details_json, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        event_type,
-        client_ip,
-        user_agent,
-        device_type,
-        source_image_sha256,
-        face_count,
-        platform,
-        matched_url,
-        evidence_hash,
-        blockchain_tx,
-        record_id,
-        status,
-        message,
-        json.dumps(details) if details else None,
-        now_iso
-    ))
-    conn.commit()
-    inserted_id = cursor.lastrowid
-    conn.close()
-    return inserted_id
-
-def get_activity_stats() -> Dict[str, Any]:
-    """Calculate summary metrics for the Creator Master Activity Dashboard."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT COUNT(*) FROM activity_logs")
-    total_events = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM activity_logs WHERE event_type = 'PIPELINE_RUN'")
-    total_scans = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM blockchain_records")
-    total_blockchain_records = cursor.fetchone()[0]
-
-    cursor.execute("SELECT COUNT(*) FROM activity_logs WHERE event_type = 'TAMPER_VERIFY' AND status = 'MISMATCH'")
-    tamper_caught = cursor.fetchone()[0]
-
-    cursor.execute("SELECT device_type, COUNT(*) FROM activity_logs GROUP BY device_type")
-    device_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
-
-    cursor.execute("SELECT platform, COUNT(*) FROM blockchain_records WHERE platform IS NOT NULL AND platform != '' GROUP BY platform")
-    platform_breakdown = {row[0]: row[1] for row in cursor.fetchall()}
-
-    cursor.execute("SELECT * FROM activity_logs ORDER BY id DESC LIMIT 50")
-    recent_logs = [dict(r) for r in cursor.fetchall()]
-
-    conn.close()
-
-    return {
-        "total_events": total_events,
-        "total_scans": total_scans,
-        "total_blockchain_records": total_blockchain_records,
-        "tamper_incidents_caught": tamper_caught,
-        "device_breakdown": device_breakdown,
-        "platform_breakdown": platform_breakdown,
-        "recent_logs": recent_logs
-    }
-
-# Initialize on import
 init_db()

@@ -12,12 +12,12 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s"
 )
-logger = logging.getLogger("facechain.main")
+logger = logging.getLogger("prooflink.main")
 
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="End-to-end Face ID and Blockchain Verification Pipeline API. Detects faces, performs genuine reverse-image search, generates canonical evidence hashes, and registers verifiable records on Polygon Amoy.",
+    description="ProofLink Self-Identity Verification & Blockchain Notarization API. Matches user selfie against their public profile/post URL and notarizes cryptographic proofs on Polygon Amoy.",
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -42,31 +42,31 @@ FRONTEND_DIST = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.
 
 if os.path.exists(FRONTEND_DIST):
     logger.info(f"Mounting production frontend assets from: {FRONTEND_DIST}")
-    # Mount static assets
     assets_dir = os.path.join(FRONTEND_DIST, "assets")
     if os.path.exists(assets_dir):
         app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
 
-    # Serve index.html for root and SPA routes
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
-        # Don't intercept API routes or docs
         if full_path.startswith("api") or full_path.startswith("docs") or full_path.startswith("redoc") or full_path.startswith("openapi.json"):
             return None
         file_path = os.path.join(FRONTEND_DIST, full_path)
         if os.path.exists(file_path) and os.path.isfile(file_path):
             return FileResponse(file_path)
         index_file = os.path.join(FRONTEND_DIST, "index.html")
-        return FileResponse(index_file)
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        return {"status": "ok", "app": settings.APP_NAME}
 else:
     @app.get("/")
     async def root():
         return {
-            "message": "FaceChain Verify API is running.",
+            "message": "ProofLink Self-Identity Verification API is running.",
             "docs": "/docs",
             "health": "/api/health",
-            "status": "/api/config/status",
-            "note": "Frontend dist not built. Run 'npm run build' in frontend directory to serve UI on port 8000."
+            "samples": "/api/samples",
+            "records": "/api/records",
+            "note": "Frontend dist not built yet. Run 'npm run build' in frontend directory to serve UI statically, or run 'npm run dev' on port 5173."
         }
 
 if __name__ == "__main__":

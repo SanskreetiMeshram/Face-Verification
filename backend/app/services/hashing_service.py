@@ -1,66 +1,67 @@
-import json
 import hashlib
+import json
 from typing import Dict, Any, Tuple
-from app.models.schemas import CanonicalEvidence, EvidenceHashResult
+from app.models.schemas import CryptographicProof
 
 class HashingService:
-    """
-    Service responsible for deterministic JSON canonicalization and SHA-256 hashing.
-    Generates EVM-compatible bytes32 evidence fingerprints for smart contract registration.
-    """
+    @staticmethod
+    def hash_bytes(data: bytes) -> str:
+        """Compute SHA-256 hexadecimal digest of raw bytes."""
+        return hashlib.sha256(data).hexdigest()
+
+    @staticmethod
+    def hash_string(text: str) -> str:
+        """Compute SHA-256 hexadecimal digest of a UTF-8 string."""
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     @staticmethod
     def canonicalize_json(data: Dict[str, Any]) -> str:
         """
-        Canonicalize a dictionary into a deterministic JSON string:
-        - Sorted keys at all levels
-        - Standard separators (',', ':') with no extraneous whitespace
-        - UTF-8 string representation
-        - Ensures identical JSON hashes regardless of key insertion order.
+        Deterministic RFC 8785 JSON canonicalization:
+        - Sorted keys lexicographically
+        - Compact separators (',', ':') without whitespace
+        - UTF-8 representation
         """
-        return json.dumps(
-            data,
-            sort_keys=True,
-            separators=(',', ':'),
-            ensure_ascii=False
-        )
+        return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
     @classmethod
-    def hash_evidence(cls, evidence: CanonicalEvidence) -> EvidenceHashResult:
+    def compute_record_hash(cls, selfie_sha256: str, profile_sha256: str, metadata_sha256: str) -> str:
         """
-        Convert CanonicalEvidence into a deterministic JSON string and calculate its SHA-256 hash.
-        Returns the EvidenceHashResult containing the canonical JSON, SHA-256 hex, and bytes32.
+        Combine constituent hashes into a single 32-byte Merkle-style record hash.
+        Returns a 0x-prefixed 64-character hexadecimal string compatible with Solidity bytes32.
         """
-        evidence_dict = evidence.model_dump()
-        canonical_str = cls.canonicalize_json(evidence_dict)
+        s_clean = selfie_sha256.lower().replace("0x", "")
+        p_clean = profile_sha256.lower().replace("0x", "")
+        m_clean = metadata_sha256.lower().replace("0x", "")
         
-        # Calculate SHA-256
-        sha256_hex = hashlib.sha256(canonical_str.encode('utf-8')).hexdigest()
-        bytes32_hash = f"0x{sha256_hex}"
-        
-        return EvidenceHashResult(
-            evidence=evidence,
-            canonical_json=canonical_str,
-            sha256_hash=sha256_hex,
-            bytes32_hash=bytes32_hash,
-            content_fingerprint=sha256_hex
-        )
+        combined_payload = f"{s_clean}:{p_clean}:{m_clean}".encode("utf-8")
+        digest = hashlib.sha256(combined_payload).hexdigest()
+        return f"0x{digest}"
 
     @classmethod
-    def verify_hash(cls, evidence: CanonicalEvidence, expected_hash: str) -> Tuple[bool, str, str]:
+    def generate_cryptographic_proof(
+        cls,
+        selfie_bytes: bytes,
+        profile_bytes: bytes,
+        metadata_dict: Dict[str, Any]
+    ) -> CryptographicProof:
         """
-        Verify whether the evidence calculates to the expected hash.
-        Returns: (is_match, calculated_bytes32, expected_bytes32_normalized)
+        Generate complete cryptographic proof structure for a verification event.
         """
-        result = cls.hash_evidence(evidence)
-        calc_b32 = result.bytes32_hash.lower()
+        selfie_hash = cls.hash_bytes(selfie_bytes)
+        profile_hash = cls.hash_bytes(profile_bytes)
+        canonical_meta = cls.canonicalize_json(metadata_dict)
+        meta_hash = cls.hash_string(canonical_meta)
         
-        exp_normalized = expected_hash.strip().lower()
-        if not exp_normalized.startswith("0x"):
-            exp_normalized = f"0x{exp_normalized}"
-            
-        is_match = (calc_b32 == exp_normalized)
-        return is_match, calc_b32, exp_normalized
+        record_hash = cls.compute_record_hash(selfie_hash, profile_hash, meta_hash)
+        
+        return CryptographicProof(
+            selfie_sha256=selfie_hash,
+            profile_sha256=profile_hash,
+            metadata_sha256=meta_hash,
+            record_hash=record_hash,
+            algorithm="SHA-256 (RFC 8785 Canonical Merkle Root)",
+            canonical_metadata_json=canonical_meta
+        )
 
-# Global singleton instance
 hashing_service = HashingService()
